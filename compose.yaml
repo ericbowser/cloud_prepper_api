@@ -15,10 +15,10 @@ services:
       context: .
     environment:
       NODE_ENV: production
-      DB_USER: ericbo
+      DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       DB_PORT: 5432
-      DB_SERVER: db # the name of the PostgreSQL service
+      DB_SERVER: localhost # the name of the PostgreSQL service
       DB_URL: postgres://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/localhost
     ports:
       - 32638:32638
@@ -29,11 +29,11 @@ services:
     image: postgres
     restart: always
     environment:
-      POSTGRES_DB:
+      POSTGRES_DB: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD} # Ensure that you define DB_PASSWORD in .env file or export it in the environment
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
     expose:
       - 5432
     healthcheck:
@@ -42,5 +42,5 @@ services:
       timeout: 5s
 
 volumes:
-  pgdata:
+    - pg_data:
 

@@ -1,19 +1,12 @@
 ﻿const {Client, Pool} = require('pg');
-const config = require("dotenv").config();
-const path = require('path');
-const getLogger = require("../logs/backendLaserLog.js");
+const getLogger = require("../logs/prepper.js");
+const {DB_PASSWORD, DB_PORT, DB_SERVER, DB_USER} = require("../env.json");
 let _logger = getLogger();
-
-// Change .env based on local dev or prod
-const env = path.resolve(__dirname, '.env');
-const options = {
-	path: env
-};
 
 let client = null;
 
 const connectionString =
-	`postgres://${config.parsed.DB_USER}:${config.parsed.DB_PASSWORD}@${config.parsed.DB_SERVER}:${config.parsed.DB_PORT}/postgres`;
+	`postgres://${DB_USER}:${DB_PASSWORD}@${DB_SERVER}:${DB_PORT}/postgres`;
 
 async function connectLocalPostgres() {
 	try {
@@ -31,8 +24,6 @@ async function connectLocalPostgres() {
 		_logger.error('Error connecting to local postgres: ', {error});
 		throw error;
 	}
-
-	return client;
 }
 async function connectLocalDockerPostgres() {
 	try {
@@ -46,7 +37,7 @@ async function connectLocalDockerPostgres() {
 		const pool = new Pool({
 			user: 'postgres',
 			host: 'localhost',
-			password: process.env.DB_PASSWORD,
+			password: DB_PASSWORD,
 			database: 'postgres',
 			port: 5432
 		});
@@ -60,4 +51,4 @@ async function connectLocalDockerPostgres() {
 	}
 }
 
-module.exports = {connectLocalPostgres, connectLocalDockerPostgres};
+module.exports = {connectLocalPostgres};

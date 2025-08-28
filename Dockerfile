@@ -16,7 +16,6 @@ ENV NODE_ENV production
 WORKDIR .
 
 COPY package*.json .
-RUN npm install -g npm@11.0.0
 RUN npm install -g nodemon
 # Run the application as a non-root user.
 # Copy the rest of the source files into the image.
@@ -24,6 +23,6 @@ COPY . .
 USER node
 
 # Expose the port that the application listens on.
-EXPOSE 32638
+EXPOSE 32639
 # Run the application.
 CMD npm run dev
