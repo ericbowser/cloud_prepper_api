@@ -2,9 +2,10 @@ const express = require('express');
 const app = express();
 const cors = require('cors');
 const router = express.Router();
-const logger = require('./logs/prepper');
 const {json} = require('body-parser');
 const {connectLocalPostgres} = require('./documentdb/client');
+const {sendEmailWithAttachment, sendGridEmail} = require('./email/SendEmail');
+const logger = require('./logs/prepperLog');
 
 let _logger = logger();
 _logger.info('Logger Initialized');
@@ -33,6 +34,25 @@ router.get('/getExamQuestions', async (req, res) => {
     return res.status(200).send(data).end();
   } catch (error) {
     _logger.error('Error fetching questions: ', {error});
+    res.status(500).json({message: 'Failed to send email.'});
+  }
+});
+
+router.post('/sendEmail', async (req, res) => {
+  const {name, email, subject, message} = req.body;
+
+  try {
+    _logger.info("Sending email: ", {name, email, subject, message});
+    //const messageId = await sendEmailWithAttachment(name, email, subject, message);
+    const messageId = await sendGridEmail({from: email, subject, message});
+    _logger.info("Email sent with message id: ", {messageId})
+    if (messageId === 1) {
+      res.status(200).send('Email Sent!').end();
+    } else {
+      res.status(500).send('Error').end();
+    }
+  } catch (error) {
+    _logger.error('Error sending email: ', {error});
     res.status(500).json({message: 'Failed to send email.'});
   }
 });

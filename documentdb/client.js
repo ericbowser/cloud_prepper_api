@@ -1,5 +1,5 @@
 ﻿const {Client, Pool} = require('pg');
-const getLogger = require("../logs/prepper.js");
+const getLogger = require("../logs/prepperLog");
 const {DB_PASSWORD, DB_PORT, DB_SERVER, DB_USER} = require("../env.json");
 let _logger = getLogger();
 

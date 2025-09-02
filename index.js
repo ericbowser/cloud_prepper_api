@@ -1,6 +1,6 @@
 const server = require('./server');
 const http = require("node:http");
-const logger = require('./logs/prepper');
+const logger = require('./logs/prepperLog');
 const _logger = logger();
 _logger.info('Starting Cloud Prepper API');
 const {PORT} = require("./env.json");

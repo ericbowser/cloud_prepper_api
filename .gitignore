@@ -15,3 +15,7 @@ node_modules/
  
 .idea
 logs/*
+sendgrid.env
+
+scripts/
+env.json
