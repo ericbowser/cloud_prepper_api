@@ -1,19 +1,23 @@
 ﻿const {Client, Pool} = require('pg');
 const getLogger = require("../logs/prepperLog");
-const {DB_PASSWORD, DB_PORT, DB_SERVER, DB_USER} = require("../env.json");
+const {DB_PASSWORD, DB_PORT, DB_HOST, DB_USER} = require("../env.json");
 let _logger = getLogger();
 
 let client = null;
 
 const connectionString =
-	`postgres://${DB_USER}:${DB_PASSWORD}@${DB_SERVER}:${DB_PORT}/postgres`;
+	`postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
 
 async function connectLocalPostgres() {
 	try {
 		if (!client) {
 			_logger.info('Connecting to local postgres..');
 			client = new Client({
-				connectionString: connectionString,
+        user: DB_USER,
+        password: DB_PASSWORD,
+        host: DB_HOST,
+        port: DB_PORT,
+        database: 'postgres',
 				ssl: false
 			});
 			await client.connect();
