@@ -19,12 +19,12 @@ router.get('/getExamQuestions', async (req, res) => {
   try {
     _logger.info("Fetching questions..");
     const ps = await connectLocalPostgres();
-    const comptia = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions");
+    const comptia = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions order by domain");
     _logger.info("number of rows returned for comptia: ", {rows: comptia.rows.length});
     if (comptia.rows.length > 0) {
       data.comptiaQuestions = comptia.rows
     }
-    const aws = await ps.query("SELECT * FROM prepper.aws_certified_architect_associate_questions");
+    const aws = await ps.query("SELECT * FROM prepper.aws_certified_architect_associate_questions order by domain");
     _logger.info("number of rows returned for aws: ", {rows: aws.rows.length});
     if (aws.rows.length > 0) {
       data.awsQuestions = aws.rows
