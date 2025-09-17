@@ -6,6 +6,8 @@ _logger.info('Starting Cloud Prepper API');
 const {PORT} = require("./env.json");
 
 const express = require("express");
+const swaggerUi = require("swagger-ui-express");
+const openapiSpecification = require("./swagger");
 
 const httpPort = PORT || 3003;
 console.log('passed port to use for http', httpPort);
@@ -14,6 +16,7 @@ const app = express();
 app.use(server);
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification))
 
 const httpServer = http.createServer(app);
 httpServer.listen(httpPort, () => {

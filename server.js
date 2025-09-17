@@ -5,15 +5,43 @@ const {json} = require('body-parser');
 const {connectLocalPostgres} = require('./documentdb/client');
 const {sendEmailWithAttachment} = require('./email/SendEmail');
 const logger = require('./logs/prepperLog');
+const swaggerUi = require('swagger-ui-express');
+const openapiSpecification = require('./swagger');
 
 let _logger = logger();
 _logger.info('Logger Initialized');
 
+router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification));
 router.use(json());
 router.use(cors());
 router.use(express.json());
 router.use(express.urlencoded({extended: true}));
 
+/**
+ * @swagger
+ * /getExamQuestions:
+ *   get:
+ *     summary: Retrieve exam questions
+ *     description: Fetches exam questions for CompTIA Cloud+ and AWS Certified Architect Associate.
+ *     responses:
+ *       200:
+ *         description: A JSON object containing arrays of questions.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 comptiaQuestions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 awsQuestions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Server error.
+ */
 router.get('/getExamQuestions', async (req, res) => {
   const data = {};
   try {
@@ -37,6 +65,33 @@ router.get('/getExamQuestions', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /sendEmail:
+ *   post:
+ *     summary: Send an email
+ *     description: Sends an email with the provided details.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               subject:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Email sent successfully.
+ *       500:
+ *         description: Failed to send email.
+ */
 router.post('/sendEmail', async (req, res) => {
   const {name, email, subject, message} = req.body;
 
