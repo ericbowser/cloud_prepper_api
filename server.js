@@ -44,25 +44,9 @@ router.use(express.urlencoded({extended: true}));
  */
 
 router.put('/updateQuestion/:id', async (req, res) => {
-  const data = {question_id};
   try {
     _logger.info("Fetching existing question");
     const ps = await connectLocalPostgres();
-    const update = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions where question_id = ${0}");
-    const values = [
-      questionData.category,
-      questionData.difficulty,
-      questionData.domain,
-      questionData.question_text,
-      optionsJson,
-      questionData.correct_answer,
-      questionData.explanation,
-      explanationDetailsJson,
-      questionData.multiple_answers ? 1 : null,
-      questionData.multiple_answers ?
-        `{${questionData.correct_answers.map(ans => `"${ans}"`).join(',')}}` :
-        null
-    ];
     const result = await ps.query(update, values);
     if (result) {
       _logger.info("Success");
@@ -73,8 +57,6 @@ router.put('/updateQuestion/:id', async (req, res) => {
   } catch (error) {
     _logger.error('Error updating question: ', {error});
     res.status(500).send("Error").end();
-  } finally {
-    ps.dispose();
   }
 });
 
@@ -83,26 +65,29 @@ router.get('/getExamQuestions', async (req, res) => {
   try {
     _logger.info("Fetching questions..");
     const ps = await connectLocalPostgres();
-    const comptia = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions order by domain");
+    const comptia = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions order by id ASC");
     _logger.info("number of rows returned for comptia: ", {rows: comptia.rows.length});
     if (comptia.rows.length > 0) {
       data.comptiaQuestions = comptia.rows
     }
-    const aws = await ps.query("SELECT * FROM prepper.aws_certified_architect_associate_questions order by domain");
+    const aws = await ps.query("SELECT * FROM prepper.aws_certified_architect_associate_questions order by id ASC");
     _logger.info("number of rows returned for aws: ", {rows: aws.rows.length});
     if (aws.rows.length > 0) {
       data.awsQuestions = aws.rows
     }
 
-    return res.status(200).send(data).end();
+    return res.status(200).send({
+      'ok': true,
+      comtiaQuestions: data.comptiaQuestions,
+      awsQuestions: data.awsQuestions
+    }).end();
   } catch (error) {
 
     _logger.error('Error fetching questions: ', {error});
     res.status(500).json({message: 'Failed to send email.'});
-  } finally {
-    ps.dispose();
   }
 });
+
 router.post('/addQuestion', async (req, res) => {
   const questionData = {
     category,
@@ -152,20 +137,15 @@ router.post('/addQuestion', async (req, res) => {
     ];
 
     const result = await ps.query(query, values);
+    _logger.info("Inserted new question: {0}", {'question_text': result.rows[0].question_text});
     res.status(201).json({
       success: true,
       question: result.rows[0],
       message: 'Question added successfully'
-    });
-
-    _logger.info("Inserted new question: {0}", {question_text});
-
-    return res.status(200).send({ok:true}).end();
+    }).end();
   } catch (error) {
     _logger.error('Error fetching questions: ', {error});
     res.status(500).json({message: 'Failed to send email.'});
-  } finally {
-    ps.dispose();
   }
 });
 
