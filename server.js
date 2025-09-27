@@ -116,7 +116,7 @@ router.use(express.urlencoded({extended: true}));
 router.put('/updateQuestion/:id', async (req, res) => {
   try {
     const questionId = req.params.id;
-    const questionData = req.body;
+    const questionData = req.body.question;
     
     _logger.info("Updating question with ID: ", {questionId});
     if (!ps) {
@@ -203,24 +203,28 @@ router.put('/updateQuestion/:id', async (req, res) => {
     values.push(questionId);
     
     const updateQuery = `
-      UPDATE prepper.${tableName} 
-      SET ${updateFields.join(', ')} 
-      WHERE id = ${paramIndex}
+      UPDATE prepper.${tableName}
+      SET ${updateFields.join(', ')}
+      WHERE id = $${paramIndex}
       RETURNING *
     `;
     
     const result = await ps.query(updateQuery, values);
+    _logger.info('Updated question: ', {result});
     
     if (result.rows.length === 0) {
       return res.status(404).json({message: 'Question not found'});
     }
     
     _logger.info("Successfully updated question: ", {id: questionId});
-    return res.status(200).json({
+    
+    const data = {
+      'ok': true,
       success: true,
       question: result.rows[0],
       message: 'Question updated successfully'
-    });
+    };
+    return res.status(200).send(...data).end();
     
   } catch (error) {
     _logger.error('Error updating question: ', {error});
@@ -323,6 +327,113 @@ router.post('/addQuestion', async (req, res) => {
   } catch (error) {
     _logger.error('Error fetching questions: ', {error});
     res.status(500).json({message: 'Failed to send email.'});
+  }
+});
+
+/**
+ * @swagger
+ * /deleteQuestion/{id}:
+ *   delete:
+ *     summary: Delete a question
+ *     description: Deletes a question by ID from either CompTIA Cloud+ or AWS Certified Architect Associate tables.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The question ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               certification:
+ *                 type: string
+ *                 enum: [aws, comptia]
+ *                 description: Optional - specify which table to delete from (aws or comptia)
+ *     responses:
+ *       200:
+ *         description: Question deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 deletedQuestion:
+ *                   type: object
+ *       404:
+ *         description: Question not found
+ *       500:
+ *         description: Server error
+ */
+router.delete('/deleteQuestion/:id', async (req, res) => {
+  try {
+    const questionId = req.params.id;
+    const { certification } = req.body || {};
+
+    _logger.info("Deleting question with ID: ", {questionId});
+    if (!ps) {
+      ps = await connectLocalPostgres();
+    }
+
+    // Determine which table based on certification or default to checking both
+    let tableName;
+    let questionToDelete = null;
+
+    if (certification === 'aws') {
+      tableName = 'aws_certified_architect_associate_questions';
+    } else if (certification === 'comptia') {
+      tableName = 'comptia_cloud_plus_questions';
+    } else {
+      // If certification not provided, we need to find which table has this ID
+      const comptiaCheck = await ps.query('SELECT * FROM prepper.comptia_cloud_plus_questions WHERE id = $1', [questionId]);
+      const awsCheck = await ps.query('SELECT * FROM prepper.aws_certified_architect_associate_questions WHERE id = $1', [questionId]);
+
+      if (comptiaCheck.rows.length > 0) {
+        tableName = 'comptia_cloud_plus_questions';
+        questionToDelete = comptiaCheck.rows[0];
+      } else if (awsCheck.rows.length > 0) {
+        tableName = 'aws_certified_architect_associate_questions';
+        questionToDelete = awsCheck.rows[0];
+      } else {
+        return res.status(404).json({message: 'Question not found'});
+      }
+    }
+
+    // If we haven't found the question yet (when certification was specified), get it before deleting
+    if (!questionToDelete) {
+      const questionQuery = await ps.query(`SELECT * FROM prepper.${tableName} WHERE id = $1`, [questionId]);
+      if (questionQuery.rows.length === 0) {
+        return res.status(404).json({message: 'Question not found'});
+      }
+      questionToDelete = questionQuery.rows[0];
+    }
+
+    // Delete the question
+    const deleteQuery = `DELETE FROM prepper.${tableName} WHERE id = $1 RETURNING *`;
+    const result = await ps.query(deleteQuery, [questionId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({message: 'Question not found'});
+    }
+
+    _logger.info("Successfully deleted question: ", {id: questionId, table: tableName});
+    return res.status(200).json({
+      success: true,
+      message: 'Question deleted successfully',
+      deletedQuestion: questionToDelete
+    });
+
+  } catch (error) {
+    _logger.error('Error deleting question: ', {error});
+    res.status(500).json({message: 'Failed to delete question'});
   }
 });
 
