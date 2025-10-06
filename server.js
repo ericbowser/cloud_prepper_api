@@ -223,12 +223,8 @@ router.put('/updateQuestion/:id', async (req, res) => {
       question: result.rows[0],
       message: 'Question updated successfully'
     };
-<<<<<<< HEAD
-    return res.status(201).send({...data}).end();
-=======
-    return res.status(201).send(...data).end();
->>>>>>> d3256ce623bfd5245a410a5706a45d6599fe7cbf
     
+    return res.status(201).send(...data).end();
   } catch (error) {
     _logger.error('Error updating question: ', {error});
     res.status(500).json({message: 'Failed to update question'});
