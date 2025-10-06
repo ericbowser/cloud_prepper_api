@@ -6,8 +6,8 @@ let _logger = getLogger();
 let client = null;
 
 const connectionString =
-	`postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
-
+	`postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${DB_HOST}:${process.env.DB_PORT}/postgres`;
+console.log(connectionString);
 async function connectLocalPostgres() {
 	try {
 		if (!client) {

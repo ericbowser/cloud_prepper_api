@@ -9,7 +9,6 @@ const swaggerUi = require('swagger-ui-express');
 const openapiSpecification = require('./swagger');
 
 let _logger = logger();
-_logger.info('Logger Initialized');
 
 let ps = null;
 
@@ -224,7 +223,7 @@ router.put('/updateQuestion/:id', async (req, res) => {
       question: result.rows[0],
       message: 'Question updated successfully'
     };
-    return res.status(200).send(...data).end();
+    return res.status(201).send({...data}).end();
     
   } catch (error) {
     _logger.error('Error updating question: ', {error});

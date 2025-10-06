@@ -18,4 +18,5 @@ logs/*
 sendgrid.env
 
 scripts/
+env.json!/node_modules/
 env.json
