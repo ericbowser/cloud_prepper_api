@@ -223,7 +223,11 @@ router.put('/updateQuestion/:id', async (req, res) => {
       question: result.rows[0],
       message: 'Question updated successfully'
     };
+<<<<<<< HEAD
     return res.status(201).send({...data}).end();
+=======
+    return res.status(201).send(...data).end();
+>>>>>>> d3256ce623bfd5245a410a5706a45d6599fe7cbf
     
   } catch (error) {
     _logger.error('Error updating question: ', {error});
@@ -255,7 +259,7 @@ router.get('/getExamQuestions', async (req, res) => {
       data.awsQuestions = aws.rows
     }
 
-    return res.status(200).send({
+    return res.status(201).send({
       'ok': true,
       ...data
     }).end();
@@ -318,7 +322,7 @@ router.post('/addQuestion', async (req, res) => {
 
     const result = await ps.query(query, values);
     _logger.info("Inserted new question: {0}", {'question_text': result.rows[0].question_text});
-    res.status(201).json({
+    res.status(201).send({
       success: true,
       question: result.rows[0],
       message: 'Question added successfully'
