@@ -20,4 +20,3 @@ sendgrid.env
 scripts/
 
 env.json
-./env.json
