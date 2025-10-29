@@ -262,7 +262,7 @@ router.get('/getExamQuestions', async (req, res) => {
   } catch (error) {
 
     _logger.error('Error fetching questions: ', {error});
-    res.status(500).json({message: 'Failed to send email.'});
+    res.status(500).json({message: error.message});
   }
 });
 
