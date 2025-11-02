@@ -116,6 +116,7 @@ router.put('/updateQuestion/:id', async (req, res) => {
   try {
     const questionId = req.params.id;
     const questionData = req.body.question;
+    const id = parseInt(questionId);
     
     _logger.info("Updating question with ID: ", {questionId});
     if (!ps) {
@@ -185,7 +186,7 @@ router.put('/updateQuestion/:id', async (req, res) => {
     }
     if (questionData.multiple_answers !== undefined) {
       updateFields.push(`multiple_answers = $${paramIndex++}`);
-      values.push(questionData.multiple_answers ? 1 : null);
+      values.push(questionData.multiple_answers ? "1" : "0");
     }
     if (questionData.correct_answers !== undefined) {
       updateFields.push(`correct_answers = $${paramIndex++}`);
@@ -199,13 +200,13 @@ router.put('/updateQuestion/:id', async (req, res) => {
     }
     
     // Add the ID parameter at the end
-    values.push(questionId);
+    // values.push(questionId);
     
     const updateQuery = `
       UPDATE prepper.${tableName}
       SET ${updateFields.join(', ')}
-      WHERE id = $${paramIndex}
-      RETURNING *
+      WHERE question_id = ${id}
+      returning *;
     `;
     
     const result = await ps.query(updateQuery, values);
