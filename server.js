@@ -7,6 +7,8 @@ const {sendEmailWithAttachment} = require('./email/SendEmail');
 const logger = require('./logs/prepperLog');
 const swaggerUi = require('swagger-ui-express');
 const openapiSpecification = require('./swagger');
+const authRoutes = require('./routes/auth');
+const { authenticateToken, requireAdmin } = require('./middleware/auth');
 
 let _logger = logger();
 
@@ -18,12 +20,17 @@ router.use(cors());
 router.use(express.json());
 router.use(express.urlencoded({extended: true}));
 
+// Mount auth routes (public)
+router.use('/auth', authRoutes);
+
 /**
  * @swagger
  * /updateQuestion/{id}:
  *   put:
- *     summary: Update an existing question
+ *     summary: Update an existing question (Admin only)
  *     description: Updates a question by ID in either CompTIA Cloud+ or AWS Certified Architect Associate tables.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -82,6 +89,10 @@ router.use(express.urlencoded({extended: true}));
  *                   type: string
  *       400:
  *         description: Bad request - No fields provided for update
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Admin access required
  *       404:
  *         description: Question not found
  *       500:
@@ -90,7 +101,7 @@ router.use(express.urlencoded({extended: true}));
  * @swagger
  * /getExamQuestions:
  *   get:
- *     summary: Retrieve exam questions
+ *     summary: Retrieve exam questions (Public)
  *     description: Fetches exam questions for CompTIA Cloud+ and AWS Certified Architect Associate.
  *     responses:
  *       200:
@@ -112,12 +123,13 @@ router.use(express.urlencoded({extended: true}));
  *         description: Server error.
  */
 
-router.put('/updateQuestion/:id', async (req, res) => {
+// PROTECTED ADMIN ROUTES - Require authentication and admin role
+router.put('/updateQuestion/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const questionId = req.params.id;
     const questionData = req.body.question;
     
-    _logger.info("Updating question with ID: ", {questionId});
+    _logger.info("Admin updating question", {questionId, adminId: req.user.id});
     if (!ps) {
       ps = await connectLocalPostgres();
     }
@@ -231,6 +243,7 @@ router.put('/updateQuestion/:id', async (req, res) => {
   }
 });
 
+// PUBLIC ROUTE - No authentication required
 router.get('/getExamQuestions', async (req, res) => {
   const data = {};
   try {
@@ -266,7 +279,8 @@ router.get('/getExamQuestions', async (req, res) => {
   }
 });
 
-router.post('/addQuestion', async (req, res) => {
+// PROTECTED ADMIN ROUTE
+router.post('/addQuestion', authenticateToken, requireAdmin, async (req, res) => {
   const questionData = {
     category,
     difficulty,
@@ -280,6 +294,8 @@ router.post('/addQuestion', async (req, res) => {
     correct_answers
   } = req.body.question;
   try {
+    _logger.info("Admin adding question", {adminId: req.user.id});
+    
     // Determine which table to insert into
     const tableName = questionData.certification === 'aws'
       ? 'aws_certified_architect_associate_questions'
@@ -289,7 +305,6 @@ router.post('/addQuestion', async (req, res) => {
     const optionsJson = JSON.stringify(questionData.options);
     const explanationDetailsJson = JSON.stringify(questionData.explanation_details);
 
-    _logger.info("Adding question id {0}", {...req.body});
     if (!ps) {
       ps = await connectLocalPostgres();
     }
@@ -324,8 +339,8 @@ router.post('/addQuestion', async (req, res) => {
       message: 'Question added successfully'
     }).end();
   } catch (error) {
-    _logger.error('Error fetching questions: ', {error});
-    res.status(500).json({message: 'Failed to send email.'});
+    _logger.error('Error adding question: ', {error});
+    res.status(500).json({message: 'Failed to add question.'});
   }
 });
 
@@ -333,8 +348,10 @@ router.post('/addQuestion', async (req, res) => {
  * @swagger
  * /deleteQuestion/{id}:
  *   delete:
- *     summary: Delete a question
+ *     summary: Delete a question (Admin only)
  *     description: Deletes a question by ID from either CompTIA Cloud+ or AWS Certified Architect Associate tables.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -367,17 +384,21 @@ router.post('/addQuestion', async (req, res) => {
  *                   type: string
  *                 deletedQuestion:
  *                   type: object
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Admin access required
  *       404:
  *         description: Question not found
  *       500:
  *         description: Server error
  */
-router.delete('/deleteQuestion/:id', async (req, res) => {
+router.delete('/deleteQuestion/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const questionId = req.params.id;
     const { certification } = req.body || {};
 
-    _logger.info("Deleting question with ID: ", {questionId});
+    _logger.info("Admin deleting question", {questionId, adminId: req.user.id});
     if (!ps) {
       ps = await connectLocalPostgres();
     }

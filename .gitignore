@@ -21,3 +21,6 @@ scripts/
 
 env.json
 !env.json
+assist.log
+prepperLog.log
+logs/
