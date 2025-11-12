@@ -16,7 +16,12 @@ let ps = null;
 
 router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification));
 router.use(json());
-router.use(cors());
+router.use(cors({
+    origin: true, // Allow all origins (or specify your front-end URL)
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 router.use(express.json());
 router.use(express.urlencoded({extended: true}));
 
@@ -250,33 +255,84 @@ router.get('/getExamQuestions', async (req, res) => {
   try {
     _logger.info("Fetching questions..");
 
-    if (!ps) {
+    // Connect to database
+    if (!ps || ps._ending) {
+      _logger.info("Establishing database connection...");
       ps = await connectLocalPostgres();
     }
-    const comptia = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions order by id ASC");
     
+    // Test connection
+    await ps.query('SELECT 1');
+    _logger.info("Database connection verified");
+    
+    // Fetch CompTIA questions
+    _logger.info("Querying CompTIA questions...");
+    const comptia = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions ORDER BY id ASC");
     _logger.info("number of rows returned for comptia: ", {rows: comptia.rows.length});
     
     if (comptia.rows.length > 0) {
-      data.comptiaQuestions = comptia.rows
+      data.comptiaQuestions = comptia.rows;
     } else {
-      return res.status(404).send({message: 'Failed to get questions...'}).end();
+      data.comptiaQuestions = [];
+      _logger.warn("No CompTIA questions found");
     }
     
-    const aws = await ps.query("SELECT * FROM prepper.aws_certified_architect_associate_questions order by id ASC");
+    // Fetch AWS questions
+    _logger.info("Querying AWS questions...");
+    const aws = await ps.query("SELECT * FROM prepper.aws_certified_architect_associate_questions ORDER BY id ASC");
     _logger.info("number of rows returned for aws: ", {rows: aws.rows.length});
+    
     if (aws.rows.length > 0) {
-      data.awsQuestions = aws.rows
+      data.awsQuestions = aws.rows;
+    } else {
+      data.awsQuestions = [];
+      _logger.warn("No AWS questions found");
     }
 
-    return res.status(201).send({
-      'ok': true,
-      ...data
-    }).end();
-  } catch (error) {
+    // Return success even if one or both are empty
+    if (data.comptiaQuestions.length === 0 && data.awsQuestions.length === 0) {
+      _logger.warn("No questions found in either table");
+      return res.status(200).json({
+        ok: true,
+        message: 'No questions found in database',
+        comptiaQuestions: [],
+        awsQuestions: []
+      });
+    }
 
-    _logger.error('Error fetching questions: ', {error});
-    res.status(500).json({message: error.message});
+    _logger.info("Successfully fetched questions", {
+      comptiaCount: data.comptiaQuestions.length,
+      awsCount: data.awsQuestions.length
+    });
+
+    return res.status(200).json({
+      ok: true,
+      ...data
+    });
+  } catch (error) {
+    _logger.error('Error fetching questions: ', {
+      error: error.message, 
+      stack: error.stack,
+      name: error.name,
+      code: error.code
+    });
+    
+    // Reset connection on error
+    if (ps && !ps._ending) {
+      try {
+        await ps.end();
+      } catch (e) {
+        _logger.error("Error closing connection: ", {error: e.message});
+      }
+      ps = null;
+    }
+    
+    res.status(500).json({
+      ok: false,
+      message: 'Failed to fetch questions',
+      error: error.message,
+      code: error.code
+    });
   }
 });
 
