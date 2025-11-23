@@ -267,7 +267,7 @@ router.get('/getExamQuestions', async (req, res) => {
     
     // Fetch CompTIA questions
     _logger.info("Querying CompTIA questions...");
-    const comptia = await ps.query("SELECT * FROM prepper.comptia_cloud_plus_questions ORDER BY id ASC");
+    const comptia = await ps.query("SELECT distinct * FROM prepper.comptia_cloud_plus_questions ORDER BY id ASC");
     _logger.info("number of rows returned for comptia: ", {rows: comptia.rows.length});
     
     if (comptia.rows.length > 0) {
@@ -279,7 +279,7 @@ router.get('/getExamQuestions', async (req, res) => {
     
     // Fetch AWS questions
     _logger.info("Querying AWS questions...");
-    const aws = await ps.query("SELECT * FROM prepper.aws_certified_architect_associate_questions ORDER BY id ASC");
+    const aws = await ps.query("SELECT distinct * FROM prepper.aws_certified_architect_associate_questions ORDER BY id ASC");
     _logger.info("number of rows returned for aws: ", {rows: aws.rows.length});
     
     if (aws.rows.length > 0) {
