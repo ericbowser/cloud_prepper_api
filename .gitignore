@@ -23,4 +23,5 @@ env.json
 !env.json
 assist.log
 prepperLog.log
-logs/
+logs/!/SAA-C03/
+/SAA-C03/

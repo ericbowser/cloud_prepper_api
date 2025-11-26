@@ -36,4 +36,4 @@ README.md
 .env*
 .flaskenv*
 !.env.project
-!.env.vault
+!.env.vault/question_bank_comptia_cloud_plus/

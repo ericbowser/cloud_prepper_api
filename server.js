@@ -9,11 +9,12 @@ const swaggerUi = require('swagger-ui-express');
 const openapiSpecification = require('./swagger');
 const authRoutes = require('./routes/auth');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
+const backupRoutes = require('./routes/backup');
 
 let _logger = logger();
 
 let ps = null;
-
+// router.use() // Removed - was causing "requires a middleware function" error
 router.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification));
 router.use(json());
 router.use(cors({
@@ -27,6 +28,9 @@ router.use(express.urlencoded({extended: true}));
 
 // Mount auth routes (public)
 router.use('/auth', authRoutes);
+
+// Mount backup routes (admin only)
+router.use('/backup', backupRoutes);
 
 /**
  * @swagger
