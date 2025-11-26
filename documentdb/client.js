@@ -10,11 +10,11 @@ async function connectLocalPostgres() {
     if (!client) {
       _logger.info("Connecting to local postgres..");
       client = new Client({
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        host: process.env.DB_HOST,
-        port: DB_PORT,
-        database: 'postgres',
+        user: process.env.DB_USER || DB_USER,
+        password: process.env.DB_PASSWORD || DB_PASSWORD,
+        host: process.env.DB_HOST || DB_HOST,
+        port: process.env.DB_PORT || DB_PORT,
+        database: 'ericbo',
         ssl: false,
       });
       await client.connect();

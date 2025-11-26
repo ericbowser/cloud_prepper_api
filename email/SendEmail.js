@@ -8,7 +8,7 @@ const sendEmailWithAttachment = async (from, to, subject, message) => {
     port: 465,
     secure: true,
     auth: {
-      user: 'ericryanbowser@gmail.com',
+      user: '',
       pass: config.GMAIL_APP_PASSWORD,
     },
   });
@@ -29,5 +29,6 @@ const sendEmailWithAttachment = async (from, to, subject, message) => {
   console.log("Message sent: %s", info.messageId);
   return info.messageId;
 }
+
 
 module.exports = {sendEmailWithAttachment};
