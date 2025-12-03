@@ -1,7 +1,7 @@
 // Test script to verify backup routes are working correctly
 const express = require('express');
-const { authenticateToken, requireAdmin } = require('./middleware/auth');
-const backupRoutes = require('./routes/backup');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const backupRoutes = require('./backup');
 
 console.log('🧪 Testing backup route configuration...');
 
@@ -24,12 +24,12 @@ try {
 
 // Test 3: Check if environment configuration loads
 try {
-  const { DB_PORT, DB_HOST, DB_USER, DB_PASSWORD } = require('./env.json');
+  const config = require('../config');
   console.log('✅ Environment configuration loaded');
-  console.log('   DB_HOST:', DB_HOST || 'undefined');
-  console.log('   DB_PORT:', DB_PORT || 'undefined');
-  console.log('   DB_USER:', DB_USER ? '[CONFIGURED]' : '[NOT SET]');
-  console.log('   DB_PASSWORD:', DB_PASSWORD ? '[CONFIGURED]' : '[NOT SET]');
+  console.log('   DB_HOST:', config.DB_HOST || 'undefined');
+  console.log('   DB_PORT:', config.DB_PORT || 'undefined');
+  console.log('   DB_USER:', config.DB_USER ? '[CONFIGURED]' : '[NOT SET]');
+  console.log('   DB_PASSWORD:', config.DB_PASSWORD ? '[CONFIGURED]' : '[NOT SET]');
 } catch (error) {
   console.log('❌ Failed to load environment configuration:', error.message);
 }

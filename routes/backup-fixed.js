@@ -35,6 +35,21 @@ function checkRateLimit(userId) {
 const _logger = logger();
 const router = express.Router();
 
+// Lazy-initialize the database pool to avoid module load-time issues
+let pool = null;
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      host: DB_HOST || 'localhost',
+      port: parseInt(DB_PORT) || 5432,
+      user: DB_USER,
+      password: DB_PASSWORD,
+      database: 'cloud_prepper'
+    });
+  }
+  return pool;
+}
+
 /**
  * @swagger
  * components:
@@ -44,71 +59,7 @@ const router = express.Router();
  *       scheme: bearer
  *       bearerFormat: JWT
  * 
- * /backup/generate-restore-script:
- *   get:
- *     summary: Generate database backup (Admin only)
- *     description: Creates a complete SQL backup of the cloud_prepper database with rate limiting
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Backup generated successfully
- *       401:
- *         description: Authentication required
- *       403:
- *         description: Admin access required
- *       429:
- *         description: Rate limit exceeded
- *       500:
- *         description: Server error
- * 
- * /backup/list:
- *   get:
- *     summary: List available backups (Admin only)
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of backup files
- * 
- * /backup/download/{filename}:
- *   get:
- *     summary: Download backup file (Admin only)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: filename
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Backup file download
- * 
- * /backup/restore:
- *   post:
- *     summary: Restore database from backup (Admin only)
- *     description: ⚠️ DANGEROUS - Completely replaces current database
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fileName:
- *                 type: string
- *               confirmPassword:
- *                 type: string
- *                 description: Must be "CONFIRM_RESTORE_DATABASE"
- *     responses:
- *       200:
- *         description: Database restored successfully
- * 
- * /backup/status:
+ * /api/backup/status:
  *   get:
  *     summary: Get backup operation status (Admin only)
  *     description: Returns the status of the last backup operation for the current user
@@ -117,46 +68,11 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: Backup status information
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 status:
- *                   type: string
- *                   enum: [idle, in_progress, completed, failed]
- *                 lastBackup:
- *                   type: object
- *                   properties:
- *                     fileName:
- *                       type: string
- *                     startTime:
- *                       type: string
- *                       format: date-time
- *                     endTime:
- *                       type: string
- *                       format: date-time
- *                     duration:
- *                       type: number
- *                       description: Duration in milliseconds
- *                     error:
- *                       type: string
  *       401:
  *         description: Authentication required
  *       403:
  *         description: Admin access required
  */
-
-// Database connection pool - using env.json configuration
-const pool = new Pool({
-  host: DB_HOST || 'localhost',
-  port: parseInt(DB_PORT) || 5432,
-  user: DB_USER,
-  password: DB_PASSWORD,
-  database: 'cloud_prepper'
-});
 
 // GET /api/backup/status
 router.get('/status', authenticateToken, requireAdmin, async (req, res) => {
@@ -436,7 +352,8 @@ router.post('/restore', authenticateToken, requireAdmin, async (req, res) => {
     console.log('⚠️  WARNING: This will completely replace your current database!');
 
     // Execute the SQL script
-    const client = await pool.connect();
+    const dbPool = getPool();
+    const client = await dbPool.connect();
     try {
       await client.query('BEGIN');
 
@@ -531,7 +448,8 @@ async function generateCompleteBackupScript() {
 
 // Generate schema creation script
 async function generateSchemaScript() {
-  const result = await pool.query(`
+  const dbPool = getPool();
+  const result = await dbPool.query(`
         SELECT schema_name 
         FROM information_schema.schemata 
         WHERE schema_name IN ('prepper', 'config', 'lasertg')
@@ -549,7 +467,8 @@ async function generateSchemaScript() {
 
 // Generate table creation script
 async function generateTableCreationScript() {
-  const tablesQuery = await pool.query(`
+  const dbPool = getPool();
+  const tablesQuery = await dbPool.query(`
         SELECT schemaname, tablename 
         FROM pg_tables 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -562,7 +481,7 @@ async function generateTableCreationScript() {
     const tableName = `${table.schemaname}.${table.tablename}`;
 
     // Get table structure
-    const structureResult = await pool.query(`
+    const structureResult = await dbPool.query(`
             SELECT column_name, data_type, character_maximum_length, 
                    column_default, is_nullable, numeric_precision, numeric_scale
             FROM information_schema.columns 
@@ -610,7 +529,8 @@ async function generateTableCreationScript() {
 
 // Generate sequences script
 async function generateSequencesScript() {
-  const sequencesQuery = await pool.query(`
+  const dbPool = getPool();
+  const sequencesQuery = await dbPool.query(`
         SELECT schemaname, sequencename 
         FROM pg_sequences 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -621,7 +541,7 @@ async function generateSequencesScript() {
   for (const seq of sequencesQuery.rows) {
     const seqName = `${seq.schemaname}.${seq.sequencename}`;
 
-    const currentVal = await pool.query(`SELECT last_value FROM ${seqName}`);
+    const currentVal = await dbPool.query(`SELECT last_value FROM ${seqName}`);
     const lastValue = currentVal.rows[0]?.last_value || 1;
 
     script += `CREATE SEQUENCE IF NOT EXISTS ${seqName} START WITH ${lastValue + 1};\n`;
@@ -633,7 +553,8 @@ async function generateSequencesScript() {
 
 // Generate indexes script
 async function generateIndexesScript() {
-  const indexesQuery = await pool.query(`
+  const dbPool = getPool();
+  const indexesQuery = await dbPool.query(`
         SELECT schemaname, tablename, indexname, indexdef
         FROM pg_indexes 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -653,7 +574,8 @@ async function generateIndexesScript() {
 
 // Generate data insertion script
 async function generateDataScript() {
-  const tablesQuery = await pool.query(`
+  const dbPool = getPool();
+  const tablesQuery = await dbPool.query(`
         SELECT schemaname, tablename 
         FROM pg_tables 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -666,7 +588,7 @@ async function generateDataScript() {
     const tableName = `${table.schemaname}.${table.tablename}`;
 
     // Get column names
-    const columnsResult = await pool.query(`
+    const columnsResult = await dbPool.query(`
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_schema = $1 AND table_name = $2
@@ -676,7 +598,7 @@ async function generateDataScript() {
     const columnNames = columnsResult.rows.map(col => col.column_name);
 
     // Get data
-    const dataResult = await pool.query(`SELECT * FROM ${tableName} ORDER BY 1`);
+    const dataResult = await dbPool.query(`SELECT * FROM ${tableName} ORDER BY 1`);
 
     if (dataResult.rows.length > 0) {
       script += `-- Data for table: ${tableName}\n`;
@@ -705,7 +627,8 @@ async function generateDataScript() {
 
 // Generate constraints script
 async function generateConstraintsScript() {
-  const constraintsQuery = await pool.query(`
+  const dbPool = getPool();
+  const constraintsQuery = await dbPool.query(`
         SELECT 
             tc.table_schema, tc.table_name, tc.constraint_name, tc.constraint_type,
             pg_get_constraintdef(pgc.oid) as constraint_definition
@@ -729,7 +652,8 @@ async function generateConstraintsScript() {
 
 // Get table counts for backup summary
 async function getTableCounts() {
-  const tablesQuery = await pool.query(`
+  const dbPool = getPool();
+  const tablesQuery = await dbPool.query(`
         SELECT schemaname, tablename 
         FROM pg_tables 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -740,7 +664,7 @@ async function getTableCounts() {
 
   for (const table of tablesQuery.rows) {
     const tableName = `${table.schemaname}.${table.tablename}`;
-    const countResult = await pool.query(`SELECT COUNT(*) as count FROM ${tableName}`);
+    const countResult = await dbPool.query(`SELECT COUNT(*) as count FROM ${tableName}`);
     tableCounts[tableName] = parseInt(countResult.rows[0].count);
   }
 
