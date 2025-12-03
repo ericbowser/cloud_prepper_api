@@ -4,7 +4,7 @@ const logger = require('../logs/prepperLog');
 const _logger = logger();
 
 // JWT secret - In production, use environment variable
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || null;
 const JWT_EXPIRES_IN = '24h'; // Token expiration time
 
 /**
