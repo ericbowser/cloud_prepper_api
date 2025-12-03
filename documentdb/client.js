@@ -1,6 +1,6 @@
 ﻿const { Client, Pool } = require("pg");
 const getLogger = require("../logs/prepperLog");
-const { DB_PORT, DB_HOST, DB_USER, DB_PASSWORD } = require("../env.json");
+const config = require("../config");
 let _logger = getLogger();
 
 let client = null;
@@ -10,10 +10,10 @@ async function connectLocalPostgres() {
     if (!client) {
       _logger.info("Connecting to local postgres..");
       client = new Client({
-        user: process.env.DB_USER || DB_USER,
-        password: process.env.DB_PASSWORD || DB_PASSWORD,
-        host: process.env.DB_HOST || DB_HOST,
-        port: process.env.DB_PORT || DB_PORT,
+        user: config.DB_USER,
+        password: config.DB_PASSWORD,
+        host: config.DB_HOST,
+        port: parseInt(config.DB_PORT),
         database: 'ericbo',
         ssl: false,
       });
@@ -36,11 +36,11 @@ async function connectLocalDockerPostgres() {
     }
 
     const pool = new Pool({
-      user: "postgres",
-      host: "localhost",
-      password: DB_PASSWORD,
+      user: config.DB_USER,
+      host: config.DB_HOST,
+      password: config.DB_PASSWORD,
       database: "postgres",
-      port: 5432,
+      port: parseInt(config.DB_PORT),
     });
     client.pool = pool;
     console.log("pool: ", pool);

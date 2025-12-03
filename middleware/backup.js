@@ -6,7 +6,7 @@ const path = require('path');
 const _logger = logger();
 
 // Backup directory configuration
-const BACKUP_DIR = 'C:/Projects/cloud_prepper_api/backups';
+const BACKUP_DIR = path.join(__dirname, '..', 'backups');
 const MAX_BACKUP_SIZE = 100 * 1024 * 1024; // 100MB max backup size
 const MAX_BACKUPS_ALLOWED = 50; // Maximum number of backups to keep
 

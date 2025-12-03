@@ -1,9 +1,3 @@
-
-.env*
-.flaskenv*
-!.env.project
-!.env.vault
-
 node_modules/
 
 .DS_Store
@@ -19,9 +13,8 @@ sendgrid.env
 
 scripts/
 
-env.json
-!env.json
-assist.log
+./env.json
 prepperLog.log
 logs/!/SAA-C03/
 /SAA-C03/
+env.json

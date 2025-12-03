@@ -3,13 +3,13 @@ const http = require("node:http");
 const logger = require('./logs/prepperLog');
 const _logger = logger();
 _logger.info('Starting Cloud Prepper API');
-const {PORT} = require("./env.json");
+const config = require("./config");
 
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const openapiSpecification = require("./swagger");
 
-const httpPort = PORT || 3003;
+const httpPort = config.PORT || 3003;
 console.log('passed port to use for http', httpPort);
 
 const app = express();
@@ -127,5 +127,56 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpecification))
 const httpServer = http.createServer(app);
 httpServer.listen(httpPort, () => {
     console.log(`Server listening on http://localhost:${httpPort}`);
+    console.log(`Swagger UI available at http://localhost:${httpPort}/api-docs`);
+    
+    // Launch Chrome externally to open Swagger UI
+    const { exec } = require('child_process');
+    const swaggerUrl = `http://localhost:${httpPort}/api-docs`;
+    
+    // Detect OS and launch Chrome accordingly
+    const platform = process.platform;
+    let chromeCommand;
+    
+    if (platform === 'win32') {
+        // Windows - try common Chrome paths
+        const chromePaths = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
+        ];
+        
+        // Try to find Chrome, or use start command
+        const fs = require('fs');
+        let chromePath = null;
+        for (const path of chromePaths) {
+            if (fs.existsSync(path)) {
+                chromePath = path;
+                break;
+            }
+        }
+        
+        if (chromePath) {
+            chromeCommand = `"${chromePath}" "${swaggerUrl}"`;
+        } else {
+            // Fallback to start command (Windows will use default browser)
+            chromeCommand = `start chrome "${swaggerUrl}"`;
+        }
+    } else if (platform === 'darwin') {
+        // macOS
+        chromeCommand = `open -a "Google Chrome" "${swaggerUrl}"`;
+    } else {
+        // Linux
+        chromeCommand = `google-chrome "${swaggerUrl}" || chromium-browser "${swaggerUrl}" || xdg-open "${swaggerUrl}"`;
+    }
+    
+    // Execute Chrome launch command
+    exec(chromeCommand, (error) => {
+        if (error) {
+            _logger.warn('Could not automatically open Chrome. Please manually navigate to:', swaggerUrl);
+            console.log(`\n📖 Please open your browser and navigate to: ${swaggerUrl}\n`);
+        } else {
+            console.log(`\n🌐 Opening Swagger UI in Chrome: ${swaggerUrl}\n`);
+        }
+    });
 });
 

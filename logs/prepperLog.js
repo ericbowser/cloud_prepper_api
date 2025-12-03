@@ -9,7 +9,7 @@ function initialize() {
     appenders: {
       prepper: {
         type: "fileSync",
-        filename: "prepperLog.log",
+        filename: "logs/prepperLog.log",
         maxLogSize: 10458760, //10 MB
         backups: 3,
         layout: {

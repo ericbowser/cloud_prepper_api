@@ -8,8 +8,14 @@ const options = {
       version: '1.0.0',
       description: 'A Node.js back-end for cloud prepper',
     },
+    servers: [
+      {
+        url: 'http://localhost:36236/api',
+        description: 'Development server',
+      },
+    ],
   },
-  apis: ['./server.js'], // files containing annotations as above
+  apis: ['./server.js', './routes/backup.js', './routes/auth.js'], // files containing annotations
 };
 
 const openapiSpecification = swaggerJsdoc(options);
