@@ -2,6 +2,9 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs').promises;
 
+// Define the directory where all avatars are stored. Adjust as needed for your config!
+const AVATARS_ROOT = path.resolve(__dirname, '..', 'uploads', 'avatars');
+
 /**
  * Process and optimize uploaded avatar image
  * @param {string} filePath - Path to uploaded image
@@ -24,8 +27,13 @@ async function processAvatar(filePath, size = 200) {
             .webp({ quality: 85 })
             .toFile(outputPath);
 
-        // Delete original file
-        await fs.unlink(filePath);
+        // Delete original file, only if in avatars directory
+        const resolved = path.resolve(filePath);
+        if (resolved.startsWith(AVATARS_ROOT + path.sep)) {
+            await fs.unlink(resolved);
+        } else {
+            throw new Error('Attempt to delete file outside avatar directory');
+        }
 
         return outputPath;
     } catch (error) {
@@ -42,9 +50,13 @@ async function deleteOldAvatar(avatarUrl) {
     if (!avatarUrl) return;
     
     try {
-        const fullPath = path.join(__dirname, '..', avatarUrl);
-        await fs.unlink(fullPath);
-        console.log('Deleted old avatar:', fullPath);
+        const fullPath = path.resolve(__dirname, '..', avatarUrl);
+        if (fullPath.startsWith(AVATARS_ROOT + path.sep)) {
+            await fs.unlink(fullPath);
+            console.log('Deleted old avatar:', fullPath);
+        } else {
+            throw new Error('Attempt to delete file outside avatar directory');
+        }
     } catch (error) {
         // Ignore errors if file doesn't exist
         console.log('Could not delete old avatar:', error.message);
