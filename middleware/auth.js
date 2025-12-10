@@ -1,11 +1,18 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../logs/prepperLog');
+const config = require('../config');
 
 const _logger = logger();
 
-// JWT secret - In production, use environment variable
-const JWT_SECRET = process.env.JWT_SECRET || null;
+// JWT secret - Load from config (env.json)
+const JWT_SECRET = config.get('JWT_SECRET');
 const JWT_EXPIRES_IN = '24h'; // Token expiration time
+
+// Verify JWT_SECRET is configured
+if (!JWT_SECRET) {
+    _logger.error('CRITICAL: JWT_SECRET is not configured! Check env.json');
+    throw new Error('JWT_SECRET must be configured in env.json');
+}
 
 /**
  * Middleware to verify JWT token

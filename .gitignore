@@ -1,20 +1,93 @@
+# ========================================
+# CRITICAL SECURITY FILES (NEVER COMMIT!)
+# ========================================
+
+# Configuration with secrets
+env.json
+.env
+.env.*
+.env.local
+.env.*.local
+sendgrid.env
+config.local.js
+config.*.local.js
+
+# Authentication & Secrets
+*secret*
+*password*
+*credentials*
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+jwt_secret*
+setup_auth.sql
+
+# Database dumps & backups
+*.dump
+*.bak
+*.backup
+database_backup_*
+backup_*.sql
+restore_*.sql
+
+# Logs (may contain sensitive data)
+*.log
+logs/*
+prepperLog.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ========================================
+# DEPENDENCIES & BUILD
+# ========================================
+
 node_modules/
+dist/
+build/
+coverage/
+.nyc_output/
+
+# ========================================
+# IDE & EDITOR
+# ========================================
 
 .DS_Store
-.idea  
-
-*.pyc
-
-*.log
- 
 .idea
-logs/*
-sendgrid.env
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ========================================
+# OPERATING SYSTEM
+# ========================================
+
+Thumbs.db
+Desktop.ini
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# ========================================
+# PROJECT SPECIFIC
+# ========================================
 
 scripts/
-
-./env.json
-prepperLog.log
-logs/!/SAA-C03/
 /SAA-C03/
-env.json
+
+# Python files (if any)
+*.pyc
+__pycache__/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.local

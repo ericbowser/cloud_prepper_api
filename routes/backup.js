@@ -155,7 +155,7 @@ const pool = new Pool({
   port: parseInt(DB_PORT) || 5432,
   user: DB_USER,
   password: DB_PASSWORD,
-  database: 'cloud_prepper'
+  database: 'ericbo'  // Database name (schema is 'prepper')
 });
 
 // GET /api/backup/status
@@ -196,6 +196,181 @@ router.get('/status', authenticateToken, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get backup status',
+      details: error.message
+    });
+  }
+});
+
+// GET /api/backup/dashboard
+router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    _logger.info('Admin fetching backup dashboard', { 
+      adminId: req.user.id, 
+      adminUsername: req.user.username 
+    });
+
+    // Get backup files info
+    const backupDir = path.join(__dirname, '..', 'backups');
+    let backups = [];
+    let totalBackupSize = 0;
+    
+    try {
+      await fs.access(backupDir);
+      const files = await fs.readdir(backupDir);
+      const sqlFiles = files.filter(file => 
+        file.endsWith('.sql') && 
+        file.includes('cloud_prepper_backup') &&
+        file.match(/^cloud_prepper_backup_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.sql$/)
+      );
+
+      backups = await Promise.all(sqlFiles.map(async file => {
+        const filePath = path.join(backupDir, file);
+        const stats = await fs.stat(filePath);
+        totalBackupSize += stats.size;
+        return {
+          fileName: file,
+          createdAt: stats.birthtime,
+          modifiedAt: stats.mtime,
+          size: stats.size,
+          sizeFormatted: formatBytes(stats.size),
+          downloadUrl: `/api/backup/download/${file}`
+        };
+      }));
+
+      backups.sort((a, b) => b.createdAt - a.createdAt);
+    } catch (err) {
+      // Backup directory doesn't exist yet
+      _logger.info('Backup directory not found, initializing empty', { adminId: req.user.id });
+    }
+
+    // Get database statistics
+    const dbSizeResult = await pool.query(`
+      SELECT pg_size_pretty(pg_database_size(current_database())) as size
+    `);
+
+    // Get schema statistics with actual row counts
+    const schemas = ['prepper', 'config', 'lasertg'];
+    const schemaStats = [];
+    
+    for (const schema of schemas) {
+      // Get table count for this schema
+      const tableCountResult = await pool.query(`
+        SELECT COUNT(DISTINCT tablename) as table_count
+        FROM pg_tables
+        WHERE schemaname = $1
+      `, [schema]);
+      
+      const tableCount = parseInt(tableCountResult.rows[0]?.table_count || 0);
+      
+      if (tableCount > 0) {
+        // Get total rows across all tables in this schema
+        const tablesResult = await pool.query(`
+          SELECT tablename
+          FROM pg_tables
+          WHERE schemaname = $1
+        `, [schema]);
+        
+        let totalRows = 0;
+        for (const table of tablesResult.rows) {
+          try {
+            const rowCountResult = await pool.query(`SELECT COUNT(*) as count FROM ${schema}.${table.tablename}`);
+            totalRows += parseInt(rowCountResult.rows[0]?.count || 0);
+          } catch (err) {
+            // Skip tables we can't access
+            _logger.warn('Could not count rows in table', { schema, table: table.tablename, error: err.message });
+          }
+        }
+        
+        schemaStats.push({
+          schemaname: schema,
+          table_count: tableCount,
+          total_rows: totalRows
+        });
+      }
+    }
+
+    // Generate recommendations
+    const recommendations = [];
+    
+    if (backups.length === 0) {
+      recommendations.push({
+        type: 'warning',
+        message: 'No backups found',
+        action: 'Create your first backup to protect your data'
+      });
+    } else if (backups.length >= 1) {
+      recommendations.push({
+        type: 'success',
+        message: `${backups.length} backup${backups.length > 1 ? 's' : ''} available`,
+        action: null
+      });
+    }
+
+    const oldestBackup = backups.length > 0 ? backups[backups.length - 1] : null;
+    const newestBackup = backups.length > 0 ? backups[0] : null;
+    const lastBackupDate = newestBackup ? newestBackup.createdAt : null;
+
+    if (lastBackupDate) {
+      const daysSinceBackup = Math.floor((Date.now() - new Date(lastBackupDate)) / (1000 * 60 * 60 * 24));
+      if (daysSinceBackup > 7) {
+        recommendations.push({
+          type: 'warning',
+          message: `Last backup was ${daysSinceBackup} days ago`,
+          action: 'Consider creating a fresh backup'
+        });
+      } else if (daysSinceBackup <= 1) {
+        recommendations.push({
+          type: 'info',
+          message: 'Backup is current',
+          action: null
+        });
+      }
+    }
+
+    if (backups.length > 10) {
+      recommendations.push({
+        type: 'info',
+        message: `${backups.length} backups consuming ${formatBytes(totalBackupSize)}`,
+        action: 'Consider cleaning up old backups to save disk space'
+      });
+    }
+
+    const dashboard = {
+      backup: {
+        backupSystemEnabled: true,
+        backupDirectory: backupDir,
+        totalBackups: backups.length,
+        lastBackupDate: lastBackupDate ? new Date(lastBackupDate).toISOString() : null,
+        totalBackupSize: totalBackupSize,
+        oldestBackup: oldestBackup,
+        newestBackup: newestBackup,
+        requestedBy: {
+          user: req.user.username,
+          role: req.user.role,
+          timestamp: new Date().toISOString()
+        }
+      },
+      database: {
+        size: dbSizeResult.rows[0].size,
+        schemas: schemaStatsResult.rows.map(row => ({
+          schemaname: row.schemaname,
+          table_count: parseInt(row.table_count),
+          total_rows: parseInt(row.total_rows) || 0
+        }))
+      },
+      recommendations: recommendations
+    };
+
+    res.json(dashboard);
+
+  } catch (error) {
+    _logger.error('Failed to fetch backup dashboard', { 
+      error: error.message, 
+      adminId: req.user.id 
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch backup dashboard',
       details: error.message
     });
   }
