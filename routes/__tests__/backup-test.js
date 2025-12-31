@@ -1,8 +1,8 @@
 // Simple backup routes test
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const logger = require('../logs/prepperLog');
+const { authenticateToken, requireAdmin } = require('../../middleware/auth');
+const logger = require('../../logs/prepperLog');
 
 const _logger = logger();
 

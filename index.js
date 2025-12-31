@@ -4,7 +4,7 @@ const logger = require('./logs/prepperLog');
 const _logger = logger();
 _logger.info('Starting Cloud Prepper API');
 const config = require("./config");
-
+const dotenv = require('dotenv').config();
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const openapiSpecification = require("./swagger");

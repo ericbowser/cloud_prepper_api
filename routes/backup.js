@@ -35,6 +35,21 @@ function checkRateLimit(userId) {
 const _logger = logger();
 const router = express.Router();
 
+// Lazy-initialize the database pool to avoid module load-time issues
+let pool = null;
+function getPool() {
+  if (!pool) {
+    pool = new Pool({
+      host: DB_HOST || 'localhost',
+      port: parseInt(DB_PORT) || 5432,
+      user: DB_USER,
+      password: DB_PASSWORD,
+      database: 'cloud_prepper'
+    });
+  }
+  return pool;
+}
+
 /**
  * @swagger
  * components:
@@ -44,71 +59,7 @@ const router = express.Router();
  *       scheme: bearer
  *       bearerFormat: JWT
  * 
- * /backup/generate-restore-script:
- *   get:
- *     summary: Generate database backup (Admin only)
- *     description: Creates a complete SQL backup of the cloud_prepper database with rate limiting
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Backup generated successfully
- *       401:
- *         description: Authentication required
- *       403:
- *         description: Admin access required
- *       429:
- *         description: Rate limit exceeded
- *       500:
- *         description: Server error
- * 
- * /backup/list:
- *   get:
- *     summary: List available backups (Admin only)
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of backup files
- * 
- * /backup/download/{filename}:
- *   get:
- *     summary: Download backup file (Admin only)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: filename
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Backup file download
- * 
- * /backup/restore:
- *   post:
- *     summary: Restore database from backup (Admin only)
- *     description: ⚠️ DANGEROUS - Completely replaces current database
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fileName:
- *                 type: string
- *               confirmPassword:
- *                 type: string
- *                 description: Must be "CONFIRM_RESTORE_DATABASE"
- *     responses:
- *       200:
- *         description: Database restored successfully
- * 
- * /backup/status:
+ * /api/backup/status:
  *   get:
  *     summary: Get backup operation status (Admin only)
  *     description: Returns the status of the last backup operation for the current user
@@ -117,46 +68,11 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: Backup status information
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 status:
- *                   type: string
- *                   enum: [idle, in_progress, completed, failed]
- *                 lastBackup:
- *                   type: object
- *                   properties:
- *                     fileName:
- *                       type: string
- *                     startTime:
- *                       type: string
- *                       format: date-time
- *                     endTime:
- *                       type: string
- *                       format: date-time
- *                     duration:
- *                       type: number
- *                       description: Duration in milliseconds
- *                     error:
- *                       type: string
  *       401:
  *         description: Authentication required
  *       403:
  *         description: Admin access required
  */
-
-// Database connection pool - using env.json configuration
-const pool = new Pool({
-  host: DB_HOST || 'localhost',
-  port: parseInt(DB_PORT) || 5432,
-  user: DB_USER,
-  password: DB_PASSWORD,
-  database: 'ericbo'  // Database name (schema is 'prepper')
-});
 
 // GET /api/backup/status
 router.get('/status', authenticateToken, requireAdmin, async (req, res) => {
@@ -196,181 +112,6 @@ router.get('/status', authenticateToken, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get backup status',
-      details: error.message
-    });
-  }
-});
-
-// GET /api/backup/dashboard
-router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    _logger.info('Admin fetching backup dashboard', { 
-      adminId: req.user.id, 
-      adminUsername: req.user.username 
-    });
-
-    // Get backup files info
-    const backupDir = path.join(__dirname, '..', 'backups');
-    let backups = [];
-    let totalBackupSize = 0;
-    
-    try {
-      await fs.access(backupDir);
-      const files = await fs.readdir(backupDir);
-      const sqlFiles = files.filter(file => 
-        file.endsWith('.sql') && 
-        file.includes('cloud_prepper_backup') &&
-        file.match(/^cloud_prepper_backup_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.sql$/)
-      );
-
-      backups = await Promise.all(sqlFiles.map(async file => {
-        const filePath = path.join(backupDir, file);
-        const stats = await fs.stat(filePath);
-        totalBackupSize += stats.size;
-        return {
-          fileName: file,
-          createdAt: stats.birthtime,
-          modifiedAt: stats.mtime,
-          size: stats.size,
-          sizeFormatted: formatBytes(stats.size),
-          downloadUrl: `/api/backup/download/${file}`
-        };
-      }));
-
-      backups.sort((a, b) => b.createdAt - a.createdAt);
-    } catch (err) {
-      // Backup directory doesn't exist yet
-      _logger.info('Backup directory not found, initializing empty', { adminId: req.user.id });
-    }
-
-    // Get database statistics
-    const dbSizeResult = await pool.query(`
-      SELECT pg_size_pretty(pg_database_size(current_database())) as size
-    `);
-
-    // Get schema statistics with actual row counts
-    const schemas = ['prepper', 'config', 'lasertg'];
-    const schemaStats = [];
-    
-    for (const schema of schemas) {
-      // Get table count for this schema
-      const tableCountResult = await pool.query(`
-        SELECT COUNT(DISTINCT tablename) as table_count
-        FROM pg_tables
-        WHERE schemaname = $1
-      `, [schema]);
-      
-      const tableCount = parseInt(tableCountResult.rows[0]?.table_count || 0);
-      
-      if (tableCount > 0) {
-        // Get total rows across all tables in this schema
-        const tablesResult = await pool.query(`
-          SELECT tablename
-          FROM pg_tables
-          WHERE schemaname = $1
-        `, [schema]);
-        
-        let totalRows = 0;
-        for (const table of tablesResult.rows) {
-          try {
-            const rowCountResult = await pool.query(`SELECT COUNT(*) as count FROM ${schema}.${table.tablename}`);
-            totalRows += parseInt(rowCountResult.rows[0]?.count || 0);
-          } catch (err) {
-            // Skip tables we can't access
-            _logger.warn('Could not count rows in table', { schema, table: table.tablename, error: err.message });
-          }
-        }
-        
-        schemaStats.push({
-          schemaname: schema,
-          table_count: tableCount,
-          total_rows: totalRows
-        });
-      }
-    }
-
-    // Generate recommendations
-    const recommendations = [];
-    
-    if (backups.length === 0) {
-      recommendations.push({
-        type: 'warning',
-        message: 'No backups found',
-        action: 'Create your first backup to protect your data'
-      });
-    } else if (backups.length >= 1) {
-      recommendations.push({
-        type: 'success',
-        message: `${backups.length} backup${backups.length > 1 ? 's' : ''} available`,
-        action: null
-      });
-    }
-
-    const oldestBackup = backups.length > 0 ? backups[backups.length - 1] : null;
-    const newestBackup = backups.length > 0 ? backups[0] : null;
-    const lastBackupDate = newestBackup ? newestBackup.createdAt : null;
-
-    if (lastBackupDate) {
-      const daysSinceBackup = Math.floor((Date.now() - new Date(lastBackupDate)) / (1000 * 60 * 60 * 24));
-      if (daysSinceBackup > 7) {
-        recommendations.push({
-          type: 'warning',
-          message: `Last backup was ${daysSinceBackup} days ago`,
-          action: 'Consider creating a fresh backup'
-        });
-      } else if (daysSinceBackup <= 1) {
-        recommendations.push({
-          type: 'info',
-          message: 'Backup is current',
-          action: null
-        });
-      }
-    }
-
-    if (backups.length > 10) {
-      recommendations.push({
-        type: 'info',
-        message: `${backups.length} backups consuming ${formatBytes(totalBackupSize)}`,
-        action: 'Consider cleaning up old backups to save disk space'
-      });
-    }
-
-    const dashboard = {
-      backup: {
-        backupSystemEnabled: true,
-        backupDirectory: backupDir,
-        totalBackups: backups.length,
-        lastBackupDate: lastBackupDate ? new Date(lastBackupDate).toISOString() : null,
-        totalBackupSize: totalBackupSize,
-        oldestBackup: oldestBackup,
-        newestBackup: newestBackup,
-        requestedBy: {
-          user: req.user.username,
-          role: req.user.role,
-          timestamp: new Date().toISOString()
-        }
-      },
-      database: {
-        size: dbSizeResult.rows[0].size,
-        schemas: schemaStatsResult.rows.map(row => ({
-          schemaname: row.schemaname,
-          table_count: parseInt(row.table_count),
-          total_rows: parseInt(row.total_rows) || 0
-        }))
-      },
-      recommendations: recommendations
-    };
-
-    res.json(dashboard);
-
-  } catch (error) {
-    _logger.error('Failed to fetch backup dashboard', { 
-      error: error.message, 
-      adminId: req.user.id 
-    });
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch backup dashboard',
       details: error.message
     });
   }
@@ -611,7 +352,8 @@ router.post('/restore', authenticateToken, requireAdmin, async (req, res) => {
     console.log('⚠️  WARNING: This will completely replace your current database!');
 
     // Execute the SQL script
-    const client = await pool.connect();
+    const dbPool = getPool();
+    const client = await dbPool.connect();
     try {
       await client.query('BEGIN');
 
@@ -706,7 +448,8 @@ async function generateCompleteBackupScript() {
 
 // Generate schema creation script
 async function generateSchemaScript() {
-  const result = await pool.query(`
+  const dbPool = getPool();
+  const result = await dbPool.query(`
         SELECT schema_name 
         FROM information_schema.schemata 
         WHERE schema_name IN ('prepper', 'config', 'lasertg')
@@ -724,7 +467,8 @@ async function generateSchemaScript() {
 
 // Generate table creation script
 async function generateTableCreationScript() {
-  const tablesQuery = await pool.query(`
+  const dbPool = getPool();
+  const tablesQuery = await dbPool.query(`
         SELECT schemaname, tablename 
         FROM pg_tables 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -737,7 +481,7 @@ async function generateTableCreationScript() {
     const tableName = `${table.schemaname}.${table.tablename}`;
 
     // Get table structure
-    const structureResult = await pool.query(`
+    const structureResult = await dbPool.query(`
             SELECT column_name, data_type, character_maximum_length, 
                    column_default, is_nullable, numeric_precision, numeric_scale
             FROM information_schema.columns 
@@ -785,7 +529,8 @@ async function generateTableCreationScript() {
 
 // Generate sequences script
 async function generateSequencesScript() {
-  const sequencesQuery = await pool.query(`
+  const dbPool = getPool();
+  const sequencesQuery = await dbPool.query(`
         SELECT schemaname, sequencename 
         FROM pg_sequences 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -796,7 +541,7 @@ async function generateSequencesScript() {
   for (const seq of sequencesQuery.rows) {
     const seqName = `${seq.schemaname}.${seq.sequencename}`;
 
-    const currentVal = await pool.query(`SELECT last_value FROM ${seqName}`);
+    const currentVal = await dbPool.query(`SELECT last_value FROM ${seqName}`);
     const lastValue = currentVal.rows[0]?.last_value || 1;
 
     script += `CREATE SEQUENCE IF NOT EXISTS ${seqName} START WITH ${lastValue + 1};\n`;
@@ -808,7 +553,8 @@ async function generateSequencesScript() {
 
 // Generate indexes script
 async function generateIndexesScript() {
-  const indexesQuery = await pool.query(`
+  const dbPool = getPool();
+  const indexesQuery = await dbPool.query(`
         SELECT schemaname, tablename, indexname, indexdef
         FROM pg_indexes 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -828,7 +574,8 @@ async function generateIndexesScript() {
 
 // Generate data insertion script
 async function generateDataScript() {
-  const tablesQuery = await pool.query(`
+  const dbPool = getPool();
+  const tablesQuery = await dbPool.query(`
         SELECT schemaname, tablename 
         FROM pg_tables 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -841,7 +588,7 @@ async function generateDataScript() {
     const tableName = `${table.schemaname}.${table.tablename}`;
 
     // Get column names
-    const columnsResult = await pool.query(`
+    const columnsResult = await dbPool.query(`
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_schema = $1 AND table_name = $2
@@ -851,7 +598,7 @@ async function generateDataScript() {
     const columnNames = columnsResult.rows.map(col => col.column_name);
 
     // Get data
-    const dataResult = await pool.query(`SELECT * FROM ${tableName} ORDER BY 1`);
+    const dataResult = await dbPool.query(`SELECT * FROM ${tableName} ORDER BY 1`);
 
     if (dataResult.rows.length > 0) {
       script += `-- Data for table: ${tableName}\n`;
@@ -880,7 +627,8 @@ async function generateDataScript() {
 
 // Generate constraints script
 async function generateConstraintsScript() {
-  const constraintsQuery = await pool.query(`
+  const dbPool = getPool();
+  const constraintsQuery = await dbPool.query(`
         SELECT 
             tc.table_schema, tc.table_name, tc.constraint_name, tc.constraint_type,
             pg_get_constraintdef(pgc.oid) as constraint_definition
@@ -904,7 +652,8 @@ async function generateConstraintsScript() {
 
 // Get table counts for backup summary
 async function getTableCounts() {
-  const tablesQuery = await pool.query(`
+  const dbPool = getPool();
+  const tablesQuery = await dbPool.query(`
         SELECT schemaname, tablename 
         FROM pg_tables 
         WHERE schemaname IN ('prepper', 'config', 'lasertg')
@@ -915,7 +664,7 @@ async function getTableCounts() {
 
   for (const table of tablesQuery.rows) {
     const tableName = `${table.schemaname}.${table.tablename}`;
-    const countResult = await pool.query(`SELECT COUNT(*) as count FROM ${tableName}`);
+    const countResult = await dbPool.query(`SELECT COUNT(*) as count FROM ${tableName}`);
     tableCounts[tableName] = parseInt(countResult.rows[0].count);
   }
 

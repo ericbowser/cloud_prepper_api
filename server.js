@@ -9,7 +9,9 @@ const swaggerUi = require('swagger-ui-express');
 const openapiSpecification = require('./swagger');
 const authRoutes = require('./routes/auth');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
-const backupRoutes = require('./routes/backup');
+const backupRoutes = require('./routes/backup_old');
+const questionsRoutes = require('./routes/questions');
+
 
 let _logger = logger();
 
@@ -31,6 +33,9 @@ router.use('/auth', authRoutes);
 
 // Mount backup routes (admin only)
 router.use('/backup', backupRoutes);
+
+// Mount questions routes (authenticated users)
+router.use('/questions', questionsRoutes);
 
 /**
  * @swagger

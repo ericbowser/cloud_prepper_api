@@ -28,11 +28,10 @@ module.exports = {
   HOST: getConfig('HOST', 'localhost'),
   
   // Database config
-  DB_HOST: getConfig('DB_HOST', 'localhost'),
-  DB_PORT: getConfig('DB_PORT', '5432'),
-  DB_USER: getConfig('DB_USER', 'postgres'),
-  DB_PASSWORD: getConfig('DB_PASSWORD', ''),
-  DB_SERVER: getConfig('DB_SERVER', 'localhost'),
+  DB_HOST: getConfig('DB_HOST', process.env.DB_HOST),
+  DB_PORT: getConfig('DB_PORT', process.env.DB_PORT),
+  DB_USER: getConfig('DB_USER', process.env.DB_USER),
+  DB_PASSWORD: getConfig('DB_PASSWORD', process.env.DB_PASSWORD),
   
   // Email config
   GMAIL_APP_PASSWORD: getConfig('GMAIL_APP_PASSWORD', ''),

@@ -91,3 +91,10 @@ tmp/
 temp/
 *.tmp
 *.local
+
+/scripts/
+.idea/
+
+docs/
+
+env_converter_script.sh

@@ -1,17 +1,18 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../logs/prepperLog');
 const config = require('../config');
+const dotenv = require('dotenv').config();
 
 const _logger = logger();
 
 // JWT secret - Load from config (env.json)
-const JWT_SECRET = config.get('JWT_SECRET');
+const JWT_SECRET = config.get('JWT_SECRET', process.env.JWT_SECRET || dotenv.parsed.JWT_SECRET);
 const JWT_EXPIRES_IN = '24h'; // Token expiration time
 
 // Verify JWT_SECRET is configured
 if (!JWT_SECRET) {
-    _logger.error('CRITICAL: JWT_SECRET is not configured! Check env.json');
-    throw new Error('JWT_SECRET must be configured in env.json');
+    _logger.error('CRITICAL: JWT_SECRET is not configured! Check env variables');
+    throw new Error('JWT_SECRET must be configured on machine to function');
 }
 
 /**

@@ -16,6 +16,7 @@
     "clean": "rm -R node_modules && rm package-lock.json && npm install"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "@google-cloud/local-auth": "^2.1.0",
     "axios": "^1.7.2",
     "bcrypt": "^6.0.0",
@@ -34,6 +35,7 @@
   },
   "devDependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "nodemon": "^3.1.7",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"

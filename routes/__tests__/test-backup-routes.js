@@ -1,7 +1,7 @@
 // Test script to verify backup routes are working correctly
 const express = require('express');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const backupRoutes = require('./backup');
+const { authenticateToken, requireAdmin } = require('../../middleware/auth');
+const backupRoutes = require('../backup_old');
 
 console.log('🧪 Testing backup route configuration...');
 
@@ -24,7 +24,7 @@ try {
 
 // Test 3: Check if environment configuration loads
 try {
-  const config = require('../config');
+  const config = require('../../config');
   console.log('✅ Environment configuration loaded');
   console.log('   DB_HOST:', config.DB_HOST || 'undefined');
   console.log('   DB_PORT:', config.DB_PORT || 'undefined');
