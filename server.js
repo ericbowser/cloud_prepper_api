@@ -9,7 +9,7 @@ const swaggerUi = require('swagger-ui-express');
 const openapiSpecification = require('./swagger');
 const authRoutes = require('./routes/auth');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
-const backupRoutes = require('./routes/backup_old');
+const backupRoutes = require('./routes/backup');
 const questionsRoutes = require('./routes/questions');
 
 

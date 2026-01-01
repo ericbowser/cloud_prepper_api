@@ -6,14 +6,14 @@ const path = require('path');
 let config = {};
 
 // Read from env.json (JSON format - easiest to import and manage)
-const envJsonPath = path.join(__dirname, 'env.json');
-if (fs.existsSync(envJsonPath)) {
+//const envJsonPath = path.join(__dirname, '.env');
+/*if (fs.existsSync(envJsonPath)) {
   try {
     config = JSON.parse(fs.readFileSync(envJsonPath, 'utf8'));
   } catch (error) {
-    console.warn('Warning: Could not parse env.json:', error.message);
+    console.warn('Warning: Could not parse .env:', error.message);
   }
-}
+}*/
 
 // Helper function to get config value with optional default
 function getConfig(key, defaultValue = null) {

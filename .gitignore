@@ -98,3 +98,5 @@ temp/
 docs/
 
 env_converter_script.sh
+generate-jwt-token.js
+node_modules/

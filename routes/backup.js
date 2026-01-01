@@ -5,7 +5,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const logger = require('../logs/prepperLog');
-const { DB_PORT, DB_HOST, DB_USER, DB_PASSWORD } = require('../env.json');
+const { DB_PORT, DB_HOST, DB_USER, DB_PASSWORD } = require('dotenv').config().parsed;
 
 // Simple rate limiting for backup operations
 const backupRateLimit = new Map();
