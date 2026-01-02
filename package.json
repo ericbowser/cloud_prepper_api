@@ -13,7 +13,8 @@
     "build": "docker build -t ericbowser/cloud_prepper_api .",
     "run": "docker run -p 32638:32638 --env-file env ericbowser/cloud_prepper_api:latest",
     "dev": "npm install && nodemon index.js",
-    "clean": "rm -R node_modules && rm package-lock.json && npm install"
+    "clean": "rm -R node_modules && rm package-lock.json && npm install",
+    "stripe": "stripe listen --forward-to localhost:32638/stripeWebhook"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
