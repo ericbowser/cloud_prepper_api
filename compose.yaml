@@ -20,6 +20,9 @@ services:
       DB_HOST: db
       DB_PORT: ${DB_PORT:-5432}
       DB_SERVER: db
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 32638
     ports:
       - 32638:32638
     depends_on:

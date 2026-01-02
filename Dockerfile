@@ -23,6 +23,6 @@ COPY . .
 USER node
 
 # Expose the port that the application listens on.
-EXPOSE 32639
+EXPOSE 32638
 # Run the application.
 CMD npm run dev
