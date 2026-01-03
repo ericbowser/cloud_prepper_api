@@ -57,7 +57,7 @@ try {
       layer.handle.stack.forEach(routerLayer => {
         if (routerLayer.route) {
           routes.push({
-            path: layer.regexp.source.replace(/\$/, '').replace(/\\\//g, '/') + routerLayer.route.path,
+            path: layer.regexp.source.replace(/\$/g, '').replace(/\\\//g, '/') + routerLayer.route.path,
             methods: Object.keys(routerLayer.route.methods)
           });
         }
