@@ -1,12 +1,8 @@
-# Comments are provided throughout this file to help you get started.
-# If you need more help, visit the Docker Compose reference guide at
-# https://docs.docker.com/go/compose-spec-reference/
+# Docker Compose configuration for CloudPrepper API
+# This configuration connects to a local PostgreSQL database running on your host machine
+#
+# To use a Docker PostgreSQL container instead, see compose.docker-db.yaml
 
-# Here the instructions define your application as a service called "server".
-# This service is built from the Dockerfile in the current directory.
-# You can add other services your application may depend on here, such as a
-# database or a cache. For examples, see the Awesome Compose repository:
-# https://github.com/docker/awesome-compose
 version: '3.8'
 
 services:
@@ -15,35 +11,24 @@ services:
       context: .
     environment:
       NODE_ENV: production
+      # Database connection - uses host.docker.internal to connect to local PostgreSQL
+      # On Linux, you may need to use host network mode or your actual host IP
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: db
+      DB_HOST: ${DB_HOST:-host.docker.internal}  # host.docker.internal works on Windows/Mac
       DB_PORT: ${DB_PORT:-5432}
-      DB_SERVER: db
+      # API Keys
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
+      # Batch API configuration
+      CLAUDE_BATCHES_REL: ${CLAUDE_BATCHES_REL:-/v1/messages/batches}
+      BACKGROUND_POLL_INTERVAL: ${BACKGROUND_POLL_INTERVAL:-300000}
+      # Server port
       PORT: 32638
     ports:
       - 32638:32638
-    depends_on:
-      - db
-
-  db:
-    image: postgres
-    restart: always
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD} # Ensure that you define DB_PASSWORD in .env file or export it in the environment
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    expose:
-      - 5432
-    healthcheck:
-      test: [ "CMD", "pg_isready" ]
-      interval: 10s
-      timeout: 5s
-
-volumes:
-    - pg_data:
+    # Extra hosts allows container to resolve host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
 

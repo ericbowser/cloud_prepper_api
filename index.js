@@ -3,13 +3,11 @@ const http = require("node:http");
 const logger = require('./logs/prepperLog');
 const _logger = logger();
 _logger.info('Starting Cloud Prepper API');
-const config = require("./config");
-const dotenv = require('dotenv').config();
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const openapiSpecification = require("./swagger");
 
-const httpPort = config.PORT || 3003;
+const httpPort = process.env.PORT || 3003;
 console.log('passed port to use for http', httpPort);
 
 const app = express();
@@ -27,6 +25,12 @@ app.use(cors({
 
 // Mount API routes
 app.use('/api', server);
+
+// Start background batch polling
+const questionsRoutes = require('./routes/questions');
+if (questionsRoutes.startBackgroundPolling) {
+  questionsRoutes.startBackgroundPolling();
+}
 
 // Also provide route at root level for backward compatibility
 // Import the handler logic directly

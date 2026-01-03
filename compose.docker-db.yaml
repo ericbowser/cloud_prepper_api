@@ -1,0 +1,72 @@
+# Docker Compose configuration with PostgreSQL in Docker volume
+# Use this if you want PostgreSQL to run in a Docker container with persistent storage
+#
+# Usage: docker-compose -f compose.docker-db.yaml up
+#
+# This creates a PostgreSQL container with a Docker volume for data persistence.
+# The volume persists data even when containers are stopped/removed.
+
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+    environment:
+      NODE_ENV: production
+      # Database connection - connects to PostgreSQL container
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db  # Service name of PostgreSQL container
+      DB_PORT: ${DB_PORT:-5432}
+      # API Keys
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      # Batch API configuration
+      CLAUDE_BATCHES_REL: ${CLAUDE_BATCHES_REL:-/v1/messages/batches}
+      BACKGROUND_POLL_INTERVAL: ${BACKGROUND_POLL_INTERVAL:-300000}
+      # Server port
+      PORT: 32638
+    ports:
+      - 32638:32638
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ericbo}  # Matches your database name
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Optional: Initialize with custom scripts
+      # POSTGRES_INITDB_ARGS: "-E UTF8"
+    volumes:
+      # Named volume for persistent data storage
+      # Data persists even if container is removed
+      - pg_data:/var/lib/postgresql/data
+      # Optional: Mount initialization scripts
+      # - ./scripts:/docker-entrypoint-initdb.d
+    ports:
+      # Expose PostgreSQL port to host (optional, for external tools)
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  # Named volume for PostgreSQL data
+  # This volume persists data across container restarts
+  # To remove data: docker-compose -f compose.docker-db.yaml down -v
+  pg_data:
+    driver: local
+    # Optional: Specify a custom location for the volume
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /path/to/your/data

@@ -13,7 +13,8 @@ FROM node:20-alpine3.20
 # Use production node environment by default.
 ENV NODE_ENV production
 
-WORKDIR .
+# Set working directory
+WORKDIR /app
 
 COPY package*.json .
 RUN npm install -g nodemon
