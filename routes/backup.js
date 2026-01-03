@@ -12,6 +12,11 @@ const backupRateLimit = new Map();
 const RATE_LIMIT_WINDOW = 5 * 60 * 1000; // 5 minutes
 const MAX_BACKUP_REQUESTS = 3; // Max 3 backup operations per 5 minutes per user
 
+// Simple rate limiting for restore operations
+const restoreRateLimit = new Map();
+const RESTORE_RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const MAX_RESTORE_REQUESTS = 2; // Max 2 restore operations per 15 minutes per admin
+
 // Track backup operations status
 const backupStatus = new Map(); // userId -> { status, startTime, endTime, fileName, error }
 
@@ -315,8 +320,47 @@ router.get('/list', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Rate limit middleware for restore operations
+function checkRestoreRateLimit(req, res, next) {
+  try {
+    const userId = req.user && req.user.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+      });
+    }
+
+    const now = Date.now();
+    const windowStart = now - RESTORE_RATE_LIMIT_WINDOW;
+    let entry = restoreRateLimit.get(userId) || [];
+
+    // Remove timestamps outside of the time window
+    entry = entry.filter((timestamp) => timestamp > windowStart);
+
+    if (entry.length >= MAX_RESTORE_REQUESTS) {
+      return res.status(429).json({
+        success: false,
+        error: 'Too many restore requests. Please try again later.',
+      });
+    }
+
+    // Record this request and continue
+    entry.push(now);
+    restoreRateLimit.set(userId, entry);
+
+    next();
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to apply restore rate limit',
+      details: err.message,
+    });
+  }
+}
+
 // POST /api/backup/restore
-router.post('/restore', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/restore', authenticateToken, requireAdmin, checkRestoreRateLimit, async (req, res) => {
   try {
     const { fileName, confirmPassword } = req.body;
 
