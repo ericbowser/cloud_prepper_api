@@ -333,11 +333,17 @@ router.post('/restore', authenticateToken, requireAdmin, async (req, res) => {
     }
 
     const backupDir = path.join(__dirname, '..', 'backups');
-    const filePath = path.join(backupDir, fileName);
-    
-    // Validate filename format
+
+    // Validate filename format before using it in a path expression
     if (!fileName.match(/^cloud_prepper_backup_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.sql$/)) {
       return res.status(400).json({ success: false, error: 'Invalid filename format' });
+    }
+
+    // Resolve the backup file path and ensure it stays within the backups directory
+    const resolvedPath = path.resolve(backupDir, fileName);
+    const normalizedBackupDir = path.resolve(backupDir) + path.sep;
+    if (!resolvedPath.startsWith(normalizedBackupDir)) {
+      return res.status(403).json({ success: false, error: 'Invalid backup file path' });
     }
     
     _logger.info('Admin starting database restore', { 
@@ -346,7 +352,7 @@ router.post('/restore', authenticateToken, requireAdmin, async (req, res) => {
       fileName: fileName 
     });
     
-    const sqlContent = await fs.readFile(filePath, 'utf8');
+    const sqlContent = await fs.readFile(resolvedPath, 'utf8');
 
     console.log('Starting database restore...');
     console.log('⚠️  WARNING: This will completely replace your current database!');
