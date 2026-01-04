@@ -5,9 +5,18 @@ const { v4: uuidv4 } = require('uuid');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const logger = require('../logs/prepperLog');
 const { connectLocalPostgres } = require('../documentdb/client');
+const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
 const _logger = logger();
+
+// Rate limiter for batch results retrieval
+const batchResultsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -708,9 +717,13 @@ router.get('/batch/:batchId/status', authenticateToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/batch/:batchId/results', authenticateToken, async (req, res) => {
-  try {
-    const { batchId } = req.params;
+router.get(
+  '/batch/:batchId/results',
+  authenticateToken,
+  batchResultsLimiter,
+  async (req, res) => {
+    try {
+      const { batchId } = req.params;
 
     const batchJob = await getBatchJob(batchId);
 
@@ -777,7 +790,8 @@ router.get('/batch/:batchId/results', authenticateToken, async (req, res) => {
       details: error.message,
     });
   }
-});
+  }
+);
 
 /**
  * Submit a batch request to Anthropic API
