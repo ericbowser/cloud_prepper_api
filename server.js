@@ -37,6 +37,78 @@ router.use('/backup', backupRoutes);
 // Mount questions routes (authenticated users)
 router.use('/questions', questionsRoutes);
 
+// Handle batch routes without /questions prefix (client compatibility)
+// These routes are accessed as /api/batch/... instead of /api/questions/batch/...
+router.get('/batch/:batchId/status', authenticateToken, async (req, res) => {
+  return res.status(400).json({
+    success: false,
+    error: 'Use the correct endpoint path',
+    message: `Use: GET /api/questions/batch/${req.params.batchId}/status`,
+    correct_endpoint: `/api/questions/batch/${req.params.batchId}/status`,
+    batch_id: req.params.batchId,
+  });
+});
+
+router.get('/batch/:batchId/results', authenticateToken, async (req, res) => {
+  return res.status(400).json({
+    success: false,
+    error: 'Use the correct endpoint path',
+    message: `Use: GET /api/questions/batch/${req.params.batchId}/results`,
+    correct_endpoint: `/api/questions/batch/${req.params.batchId}/results`,
+    batch_id: req.params.batchId,
+  });
+});
+
+router.get('/batch/:batchId', authenticateToken, async (req, res) => {
+  return res.status(400).json({
+    success: false,
+    error: 'Use the correct endpoint path',
+    message: `Use: GET /api/questions/batch/${req.params.batchId}/status`,
+    correct_endpoint: `/api/questions/batch/${req.params.batchId}/status`,
+    batch_id: req.params.batchId,
+  });
+});
+
+// Debug: Catch-all route to log unmatched requests (must be last, only for non-matching paths)
+router.use((req, res, next) => {
+  // Skip if already handled or if path matches known route prefixes
+  if (res.headersSent) {
+    return next();
+  }
+  
+  // Check if path matches any known route prefixes (should have been handled already)
+  const path = req.path || req.url.split('?')[0];
+  const knownPrefixes = ['/auth', '/backup', '/questions', '/api-docs'];
+  const matchesKnownPrefix = knownPrefixes.some(prefix => path.startsWith(prefix));
+  
+  if (matchesKnownPrefix) {
+    // Path matches a known prefix but wasn't handled - log for debugging
+    _logger.warn('Unmatched route request (known prefix)', {
+      method: req.method,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      baseUrl: req.baseUrl,
+      url: req.url,
+    });
+  } else {
+    // Unknown path - no action needed
+  }
+  
+  res.status(404).json({
+    success: false,
+    error: 'Route not found',
+    method: req.method,
+    path: req.path || req.url,
+    available_routes: [
+      'POST /api/questions/generateBatch',
+      'GET /api/questions/generateBatch?batch_id=... (returns helpful error)',
+      'GET /api/questions/batch/:batchId/status',
+      'GET /api/questions/batchStatus/:batchId (compatibility)',
+      'GET /api/questions/batch/:batchId/results',
+    ],
+  });
+});
+
 /**
  * @swagger
  * /updateQuestion/{id}:
@@ -258,11 +330,38 @@ router.put('/updateQuestion/:id', authenticateToken, requireAdmin, async (req, r
   }
 });
 
+/**
+ * Seeded random number generator (Linear Congruential Generator)
+ */
+function seededRandom(seed) {
+  return function() {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+}
+
+/**
+ * Shuffle array using Fisher-Yates algorithm with seeded random
+ */
+function shuffleArray(array, seed) {
+  const rng = seededRandom(seed);
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 // PUBLIC ROUTE - No authentication required
 router.get('/getExamQuestions', async (req, res) => {
   const data = {};
   try {
     _logger.info("Fetching questions..");
+
+    // Generate random seed for this request
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    _logger.info("Generated random seed for question shuffling", { seed: randomSeed });
 
     // Connect to database
     if (!ps || ps._ending) {
@@ -280,7 +379,13 @@ router.get('/getExamQuestions', async (req, res) => {
     _logger.info("number of rows returned for comptia: ", {rows: comptia.rows.length});
     
     if (comptia.rows.length > 0) {
-      data.comptiaQuestions = comptia.rows;
+      // Shuffle questions using seeded random
+      data.comptiaQuestions = shuffleArray(comptia.rows, randomSeed);
+      _logger.info("CompTIA questions shuffled", { 
+        original_count: comptia.rows.length, 
+        shuffled_count: data.comptiaQuestions.length,
+        seed: randomSeed 
+      });
     } else {
       data.comptiaQuestions = [];
       _logger.warn("No CompTIA questions found");
@@ -292,7 +397,14 @@ router.get('/getExamQuestions', async (req, res) => {
     _logger.info("number of rows returned for aws: ", {rows: aws.rows.length});
     
     if (aws.rows.length > 0) {
-      data.awsQuestions = aws.rows;
+      // Shuffle questions using seeded random (use different seed offset for AWS)
+      const awsSeed = randomSeed + 1000000; // Offset to ensure different shuffle pattern
+      data.awsQuestions = shuffleArray(aws.rows, awsSeed);
+      _logger.info("AWS questions shuffled", { 
+        original_count: aws.rows.length, 
+        shuffled_count: data.awsQuestions.length,
+        seed: awsSeed 
+      });
     } else {
       data.awsQuestions = [];
       _logger.warn("No AWS questions found");
@@ -309,13 +421,15 @@ router.get('/getExamQuestions', async (req, res) => {
       });
     }
 
-    _logger.info("Successfully fetched questions", {
+    _logger.info("Successfully fetched and shuffled questions", {
       comptiaCount: data.comptiaQuestions.length,
-      awsCount: data.awsQuestions.length
+      awsCount: data.awsQuestions.length,
+      seed: randomSeed
     });
 
     return res.status(200).json({
       ok: true,
+      seed: randomSeed, // Include seed in response for reference
       ...data
     });
   } catch (error) {

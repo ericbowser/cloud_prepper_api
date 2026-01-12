@@ -17,7 +17,7 @@
     "stripe": "stripe listen --forward-to localhost:32638/stripeWebhook"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.71.2",
     "@google-cloud/local-auth": "^2.1.0",
     "axios": "^1.7.2",
     "bcrypt": "^6.0.0",

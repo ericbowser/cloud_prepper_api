@@ -1,13 +1,15 @@
 const server = require('./server');
 const http = require("node:http");
 const logger = require('./logs/prepperLog');
+const config = require('./config');
 const _logger = logger();
 _logger.info('Starting Cloud Prepper API');
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const openapiSpecification = require("./swagger");
 
-const httpPort = process.env.PORT || 3003;
+// Use PORT from config.js (defaults to 36236) or process.env override
+const httpPort = parseInt(process.env.PORT || config.PORT || 36236, 10);
 console.log('passed port to use for http', httpPort);
 
 const app = express();
@@ -37,6 +39,29 @@ if (questionsRoutes.startBackgroundPolling) {
 const { connectLocalPostgres } = require('./documentdb/client');
 let ps = null;
 
+/**
+ * Seeded random number generator (Linear Congruential Generator)
+ */
+function seededRandom(seed) {
+    return function() {
+        seed = (seed * 9301 + 49297) % 233280;
+        return seed / 233280;
+    };
+}
+
+/**
+ * Shuffle array using Fisher-Yates algorithm with seeded random
+ */
+function shuffleArray(array, seed) {
+    const rng = seededRandom(seed);
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
 app.get('/getExamQuestions', async (req, res) => {
     const data = {};
     const logger = require('./logs/prepperLog');
@@ -44,6 +69,10 @@ app.get('/getExamQuestions', async (req, res) => {
     
     try {
         _logger.info("Fetching questions (root route)..");
+
+        // Generate random seed for this request
+        const randomSeed = Math.floor(Math.random() * 1000000);
+        _logger.info("Generated random seed for question shuffling", { seed: randomSeed });
 
         // Connect to database
         if (!ps || ps._ending) {
@@ -61,7 +90,13 @@ app.get('/getExamQuestions', async (req, res) => {
         _logger.info("number of rows returned for comptia: ", {rows: comptia.rows.length});
         
         if (comptia.rows.length > 0) {
-            data.comptiaQuestions = comptia.rows;
+            // Shuffle questions using seeded random
+            data.comptiaQuestions = shuffleArray(comptia.rows, randomSeed);
+            _logger.info("CompTIA questions shuffled", { 
+                original_count: comptia.rows.length, 
+                shuffled_count: data.comptiaQuestions.length,
+                seed: randomSeed 
+            });
         } else {
             data.comptiaQuestions = [];
             _logger.warn("No CompTIA questions found");
@@ -73,7 +108,14 @@ app.get('/getExamQuestions', async (req, res) => {
         _logger.info("number of rows returned for aws: ", {rows: aws.rows.length});
         
         if (aws.rows.length > 0) {
-            data.awsQuestions = aws.rows;
+            // Shuffle questions using seeded random (use different seed offset for AWS)
+            const awsSeed = randomSeed + 1000000; // Offset to ensure different shuffle pattern
+            data.awsQuestions = shuffleArray(aws.rows, awsSeed);
+            _logger.info("AWS questions shuffled", { 
+                original_count: aws.rows.length, 
+                shuffled_count: data.awsQuestions.length,
+                seed: awsSeed 
+            });
         } else {
             data.awsQuestions = [];
             _logger.warn("No AWS questions found");
@@ -90,13 +132,15 @@ app.get('/getExamQuestions', async (req, res) => {
             });
         }
 
-        _logger.info("Successfully fetched questions", {
+        _logger.info("Successfully fetched and shuffled questions", {
             comptiaCount: data.comptiaQuestions.length,
-            awsCount: data.awsQuestions.length
+            awsCount: data.awsQuestions.length,
+            seed: randomSeed
         });
 
         return res.status(200).json({
             ok: true,
+            seed: randomSeed, // Include seed in response for reference
             ...data
         });
     } catch (error) {
