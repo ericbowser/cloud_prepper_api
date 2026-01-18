@@ -109,105 +109,6 @@ router.use((req, res, next) => {
   });
 });
 
-/**
- * @swagger
- * /updateQuestion/{id}:
- *   put:
- *     summary: Update an existing question (Admin only)
- *     description: Updates a question by ID in either CompTIA Cloud+ or AWS Certified Architect Associate tables.
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: The question ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               certification:
- *                 type: string
- *                 enum: [aws, comptia]
- *                 description: Optional - specify which table to update (aws or comptia)
- *               category:
- *                 type: string
- *               difficulty:
- *                 type: string
- *               domain:
- *                 type: string
- *               question_text:
- *                 type: string
- *               options:
- *                 type: array
- *                 items:
- *                   type: string
- *               correct_answer:
- *                 type: string
- *               explanation:
- *                 type: string
- *               explanation_details:
- *                 type: object
- *               multiple_answers:
- *                 type: boolean
- *               correct_answers:
- *                 type: array
- *                 items:
- *                   type: string
- *     responses:
- *       200:
- *         description: Question updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 question:
- *                   type: object
- *                 message:
- *                   type: string
- *       400:
- *         description: Bad request - No fields provided for update
- *       401:
- *         description: Authentication required
- *       403:
- *         description: Admin access required
- *       404:
- *         description: Question not found
- *       500:
- *         description: Server error
- * 
- * @swagger
- * /getExamQuestions:
- *   get:
- *     summary: Retrieve exam questions (Public)
- *     description: Fetches exam questions for CompTIA Cloud+ and AWS Certified Architect Associate.
- *     responses:
- *       200:
- *         description: A JSON object containing arrays of questions.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 comptiaQuestions:
- *                   type: array
- *                   items:
- *                     type: object
- *                 awsQuestions:
- *                   type: array
- *                   items:
- *                     type: object
- *       500:
- *         description: Server error.
- */
 
 // PROTECTED ADMIN ROUTES - Require authentication and admin role
 router.put('/updateQuestion/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -353,6 +254,105 @@ function shuffleArray(array, seed) {
   return shuffled;
 }
 
+/**
+ * @swagger
+ * /updateQuestion/{id}:
+ *   put:
+ *     summary: Update an existing question (Admin only)
+ *     description: Updates a question by ID in either CompTIA Cloud+ or AWS Certified Architect Associate tables.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The question ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               certification:
+ *                 type: string
+ *                 enum: [aws, comptia]
+ *                 description: Optional - specify which table to update (aws or comptia)
+ *               category:
+ *                 type: string
+ *               difficulty:
+ *                 type: string
+ *               domain:
+ *                 type: string
+ *               question_text:
+ *                 type: string
+ *               options:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               correct_answer:
+ *                 type: string
+ *               explanation:
+ *                 type: string
+ *               explanation_details:
+ *                 type: object
+ *               multiple_answers:
+ *                 type: boolean
+ *               correct_answers:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Question updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 question:
+ *                   type: object
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Bad request - No fields provided for update
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Question not found
+ *       500:
+ *         description: Server error
+ *
+ * @swagger
+ * /getExamQuestions:
+ *   get:
+ *     summary: Retrieve exam questions (Public)
+ *     description: Fetches exam questions for CompTIA Cloud+ and AWS Certified Architect Associate.
+ *     responses:
+ *       200:
+ *         description: A JSON object containing arrays of questions.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 comptiaQuestions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 awsQuestions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Server error.
+ */
 // PUBLIC ROUTE - No authentication required
 router.get('/getExamQuestions', async (req, res) => {
   const data = {};
