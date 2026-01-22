@@ -1170,6 +1170,19 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
       model = CLAUDE_OPUS_4_5
     } = req.body;
 
+    // Normalize cognitive_level and skill_level to arrays if they are provided
+    // This allows both single values and arrays to be accepted
+    const cognitiveLevelArray = cognitive_level 
+      ? (Array.isArray(cognitive_level) ? cognitive_level : [cognitive_level])
+      : null;
+    const skillLevelArray = skill_level 
+      ? (Array.isArray(skill_level) ? skill_level : [skill_level])
+      : null;
+
+    // Valid values for validation
+    const validCognitiveLevels = ['Knowledge', 'Comprehension', 'Application', 'Analysis', 'Synthesis', 'Evaluation'];
+    const validSkillLevels = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
+
     _logger.info('[TRACE] Request body parsed', {
       request_id: requestId,
       certification_type,
@@ -1179,7 +1192,9 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
       'output_format': output_format,
       'scenario_context': scenario_context,
       'cognitive_level': cognitive_level,
+      'cognitive_level_array': cognitiveLevelArray,
       'skill_level': skill_level,
+      'skill_level_array': skillLevelArray,
       count,
       elapsed_ms: Date.now() - startTime,
     });
@@ -1211,6 +1226,36 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
         success: false,
         error: 'Invalid certification_type. Must be CV0-004 or SAA-C03',
       });
+    }
+
+    // Validate cognitive_level if provided
+    if (cognitiveLevelArray) {
+      const invalidLevels = cognitiveLevelArray.filter(level => !validCognitiveLevels.includes(level));
+      if (invalidLevels.length > 0) {
+        _logger.warn('[TRACE] Validation failed: invalid cognitive_level values', {
+          request_id: requestId,
+          invalid_levels: invalidLevels
+        });
+        return res.status(400).json({
+          success: false,
+          error: `Invalid cognitive_level values: ${invalidLevels.join(', ')}. Must be one of: ${validCognitiveLevels.join(', ')}`,
+        });
+      }
+    }
+
+    // Validate skill_level if provided
+    if (skillLevelArray) {
+      const invalidLevels = skillLevelArray.filter(level => !validSkillLevels.includes(level));
+      if (invalidLevels.length > 0) {
+        _logger.warn('[TRACE] Validation failed: invalid skill_level values', {
+          request_id: requestId,
+          invalid_levels: invalidLevels
+        });
+        return res.status(400).json({
+          success: false,
+          error: `Invalid skill_level values: ${invalidLevels.join(', ')}. Must be one of: ${validSkillLevels.join(', ')}`,
+        });
+      }
     }
 
     // Validate count (allow any positive number for testing)
@@ -1254,8 +1299,8 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
       batch_id: localBatchId,
       certification_type,
       domain: domain_name,
-      cognitive_level,
-      skill_level,
+      cognitive_level: cognitiveLevelArray,
+      skill_level: skillLevelArray,
       count,
     });
 
@@ -1269,11 +1314,20 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
 
     const batchRequests = [];
     for (let i = 0; i < count; i++) {
+      // Cycle through arrays if provided, otherwise use null
+      // If array is shorter than count, cycle through using modulo
+      const currentCognitiveLevel = cognitiveLevelArray 
+        ? cognitiveLevelArray[i % cognitiveLevelArray.length]
+        : null;
+      const currentSkillLevel = skillLevelArray 
+        ? skillLevelArray[i % skillLevelArray.length]
+        : null;
+
       const prompt = buildGenerationPrompt({
         certification_type,
         domain_name,
-        cognitive_level,
-        skill_level,
+        cognitive_level: currentCognitiveLevel,
+        skill_level: currentSkillLevel,
         scenario_context,
         count: 1, // Each request generates 1 question
       });
@@ -1320,6 +1374,14 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
     });
 
     // Store batch job in database
+    // Store arrays as JSON strings if they are arrays, otherwise store as-is
+    const cognitiveLevelForStorage = cognitiveLevelArray 
+      ? (cognitiveLevelArray.length === 1 ? cognitiveLevelArray[0] : JSON.stringify(cognitiveLevelArray))
+      : null;
+    const skillLevelForStorage = skillLevelArray 
+      ? (skillLevelArray.length === 1 ? skillLevelArray[0] : JSON.stringify(skillLevelArray))
+      : null;
+
     const batchJob = await storeBatchJob({
       batch_id: localBatchId,
       anthropic_batch_id: anthropicBatchId,
@@ -1327,15 +1389,15 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
       username: req.user?.username,
       certification_type,
       domain_name,
-      cognitive_level,
-      skill_level,
+      cognitive_level: cognitiveLevelForStorage,
+      skill_level: skillLevelForStorage,
       count,
       scenario_context,
       request_params: {
         certification_type,
         domain_name,
-        cognitive_level,
-        skill_level,
+        cognitive_level: cognitiveLevelArray,
+        skill_level: skillLevelArray,
         count,
         scenario_context,
       },
@@ -1364,8 +1426,8 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
       metadata: {
         certification_type,
         domain_name,
-        cognitive_level,
-        skill_level,
+        cognitive_level: cognitiveLevelArray,
+        skill_level: skillLevelArray,
         count,
         submitted_at: new Date().toISOString(),
         submitted_by: req.user?.username,
@@ -1398,7 +1460,7 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
  * /questions/batch/{batchId}/status:
  *   get:
  *     summary: Get batch job status
- *     description: Retrieve the current status of a batch job from the database
+ *     description: Retrieve the current status of a batch job from the PostgreSQL database. Returns detailed information about the batch including status, progress, metadata, and timestamps.
  *     tags: [Questions]
  *     security:
  *       - bearerAuth: []
@@ -1408,14 +1470,126 @@ router.post('/generateBatch', authenticateToken, async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: The batch ID returned from generateBatch
+ *         description: The batch ID returned from generateBatch endpoint
+ *         example: "batch_1768789851204_b0686239"
  *     responses:
  *       200:
  *         description: Batch status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 batch_id:
+ *                   type: string
+ *                   description: Unique batch identifier
+ *                   example: "batch_1768789851204_b0686239"
+ *                 anthropic_batch_id:
+ *                   type: string
+ *                   description: Anthropic API batch identifier
+ *                   example: "batch_abc123def456"
+ *                 status:
+ *                   type: string
+ *                   enum: [pending, processing, completed, error, expired, cancelled]
+ *                   description: Current status of the batch job
+ *                   example: "processing"
+ *                 progress:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       description: Total number of questions requested
+ *                       example: 10
+ *                 metadata:
+ *                   type: object
+ *                   properties:
+ *                     certification_type:
+ *                       type: string
+ *                       enum: [CV0-004, SAA-C03]
+ *                       example: "CV0-004"
+ *                     domain_name:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "Cloud Security"
+ *                     cognitive_level:
+ *                       type: string
+ *                       nullable: true
+ *                       enum: [Knowledge, Comprehension, Application, Analysis, Synthesis, Evaluation]
+ *                       example: "Application"
+ *                     skill_level:
+ *                       type: string
+ *                       nullable: true
+ *                       enum: [Beginner, Intermediate, Advanced, Expert]
+ *                       example: "Intermediate"
+ *                     count:
+ *                       type: integer
+ *                       description: Number of questions requested
+ *                       example: 10
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Timestamp when batch was created
+ *                       example: "2026-01-19T02:33:55.437Z"
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                       description: Timestamp when batch was last updated
+ *                       example: "2026-01-19T02:35:12.123Z"
+ *                     last_polled_at:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                       description: Timestamp when batch status was last polled from Anthropic API
+ *                       example: "2026-01-19T02:35:12.123Z"
+ *                     completed_at:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                       description: Timestamp when batch was completed
+ *                       example: "2026-01-19T02:40:30.789Z"
+ *                 error_message:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Error message if batch failed or expired
+ *                   example: null
  *       404:
  *         description: Batch not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: string
+ *                   example: "Batch not found"
+ *                 batch_id:
+ *                   type: string
+ *                   example: "batch_1768789851204_b0686239"
  *       401:
- *         description: Unauthorized
+ *         description: Unauthorized - Invalid or missing authentication token
+ *       500:
+ *         description: Server error - Failed to retrieve batch status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: string
+ *                   example: "Failed to retrieve batch status"
+ *                 details:
+ *                   type: string
+ *                   example: "Database connection error"
  */
 // Helper function to handle batch status retrieval (shared by all compatibility endpoints)
 async function handleBatchStatusRequest(req, res, batchId) {
