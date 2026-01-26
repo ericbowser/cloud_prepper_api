@@ -1,4 +1,4 @@
-﻿const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerJsdoc = require('swagger-jsdoc');
 
 const options = {
   definition: {
@@ -15,7 +15,7 @@ const options = {
       },
     ],
   },
-  apis: ['./server.js', './routes/backup.js', './routes/auth.js'], // files containing annotations
+  apis: ['./server.js', './routes/backup.js', './routes/auth.js', './routes/questions.js'], // files containing annotations
 };
 
 const openapiSpecification = swaggerJsdoc(options);

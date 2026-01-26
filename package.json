@@ -17,7 +17,7 @@
     "stripe": "stripe listen --forward-to localhost:32638/stripeWebhook"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.71.2",
     "@google-cloud/local-auth": "^2.1.0",
     "axios": "^1.7.2",
     "bcrypt": "^6.0.0",
@@ -32,9 +32,11 @@
     "pg": "^8.12.0",
     "url": "^0.11.3",
     "uuid": "^11.0.3",
-    "wss": "^0.0.2"
+    "wss": "^0.0.2",
+    "express-rate-limit": "^8.2.1"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "nodemon": "^3.1.7",
