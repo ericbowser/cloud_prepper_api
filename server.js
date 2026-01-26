@@ -10,6 +10,7 @@ const openapiSpecification = require('./swagger');
 const authRoutes = require('./routes/auth');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
 const backupRoutes = require('./routes/backup');
+const rateLimit = require('express-rate-limit');
 const questionsRoutes = require('./routes/questions');
 
 
@@ -573,7 +574,12 @@ router.post('/addQuestion', authenticateToken, requireAdmin, async (req, res) =>
  *       500:
  *         description: Server error
  */
-router.delete('/deleteQuestion/:id', authenticateToken, requireAdmin, async (req, res) => {
+const deleteQuestionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 delete requests per windowMs
+});
+
+router.delete('/deleteQuestion/:id', authenticateToken, requireAdmin, deleteQuestionLimiter, async (req, res) => {
   try {
     const questionId = req.params.id;
     const { certification } = req.body || {};
