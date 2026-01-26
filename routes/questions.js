@@ -1979,9 +1979,13 @@ router.get('/batch/:batchId/status', authenticateToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/batch/:batchId/results', authenticateToken, async (req, res) => {
-  try {
-    const { batchId } = req.params;
+router.get(
+  '/batch/:batchId/results',
+  authenticateToken,
+  batchResultsLimiter,
+  async (req, res) => {
+    try {
+      const { batchId } = req.params;
 
     const batchJob = await getBatchJob(batchId);
 
@@ -2099,7 +2103,8 @@ router.get('/batch/:batchId/results', authenticateToken, async (req, res) => {
       details: error.message,
     });
   }
-});
+  }
+);
 
 /**
  * Submit a batch request to Anthropic API
