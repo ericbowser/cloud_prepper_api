@@ -1982,7 +1982,6 @@ router.get('/batch/:batchId/status', authenticateToken, async (req, res) => {
 router.get(
   '/batch/:batchId/results',
   authenticateToken,
-  batchResultsLimiter,
   async (req, res) => {
     try {
       const { batchId } = req.params;
