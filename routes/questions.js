@@ -15,6 +15,7 @@ const MAX_PENDING_AGE_HOURS = parseInt(process.env.MAX_PENDING_AGE_HOURS) || 24;
 const MAX_PENDING_AGE_MS = MAX_PENDING_AGE_HOURS * 60 * 60 * 1000;
 const QUESTIONS_FOLDER = path.join(__dirname, '..', 'questions');
 const DOMAIN_WEIGHTS = require('../utils/constants').DOMAIN_WEIGHTS;
+const { getCategoriesForDomain, findClosestCategory, isValidCategoryForDomain } = require('../utils/category_taxonomy');
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || ANTHROPIC_API_KEY,
 });
@@ -1102,6 +1103,11 @@ router.post('/generateQuestion', authenticateToken, async (req, res) => {
       questions = [questions];
     }
 
+    // Validate and fix categories
+    if (domain_name) {
+      questions = validateQuestionCategories(questions, domain_name);
+    }
+
     _logger.info(`Successfully generated ${questions.length} questions`);
     _logger.info('Questions', {
       questions: questions,
@@ -1982,7 +1988,6 @@ router.get('/batch/:batchId/status', authenticateToken, async (req, res) => {
 router.get(
   '/batch/:batchId/results',
   authenticateToken,
-  batchResultsLimiter,
   async (req, res) => {
     try {
       const { batchId } = req.params;
@@ -2217,7 +2222,7 @@ async function pollBatchStatusFromAPI(anthropicBatchId) {
 /**
  * Retrieve and parse batch results from Anthropic API
  */
-async function retrieveBatchResultsFromAPI(anthropicBatchId) {
+async function retrieveBatchResultsFromAPI(anthropicBatchId, domain_name = null) {
   const url = `${_batchurl}/${anthropicBatchId}/results`;
   const allQuestions = [];
 
@@ -2404,6 +2409,11 @@ async function retrieveBatchResultsFromAPI(anthropicBatchId) {
 
         // Validate and add questions
         if (Array.isArray(questions)) {
+          // Validate categories if domain is provided
+          if (domain_name) {
+            questions = validateQuestionCategories(questions, domain_name);
+          }
+          
           _logger.info('Adding array of questions', {
             anthropic_batch_id: anthropicBatchId,
             custom_id: result.custom_id,
@@ -2615,7 +2625,8 @@ async function pollPendingBatches() {
 
           try {
             let allQuestions = await retrieveBatchResultsFromAPI(
-              batchJob.anthropic_batch_id
+              batchJob.anthropic_batch_id,
+              batchJob.domain_name
             );
 
             // If API retrieval returned empty, try to get from database (might have been saved earlier)
@@ -2862,8 +2873,50 @@ function startBackgroundPolling() {
 }
 
 /**
- * Build the generation prompt for Claude
+ * Validate and fix question categories
+ * Ensures all questions use valid categories from the taxonomy
  */
+function validateQuestionCategories(questions, domain_name) {
+  const validCategories = getCategoriesForDomain(domain_name);
+  
+  if (!validCategories || validCategories.length === 0) {
+    _logger.warn('[CATEGORY-VALIDATION] No valid categories found for domain', { domain_name });
+    return questions;
+  }
+
+  return questions.map(question => {
+    const category = question.subdomain || question.category;
+    
+    if (!category) {
+      _logger.warn('[CATEGORY-VALIDATION] Question missing category, using first valid category', {
+        question_text: question.question_text?.substring(0, 50),
+        domain_name
+      });
+      question.subdomain = validCategories[0];
+      return question;
+    }
+
+    if (!isValidCategoryForDomain(category, domain_name)) {
+      const closestMatch = findClosestCategory(category, validCategories);
+      _logger.warn('[CATEGORY-VALIDATION] Invalid category detected, mapping to closest match', {
+        original_category: category,
+        closest_match: closestMatch,
+        domain_name,
+        question_text: question.question_text?.substring(0, 50)
+      });
+      question.subdomain = closestMatch;
+    } else {
+      _logger.info('[CATEGORY-VALIDATION] Category validated successfully', {
+        category,
+        domain_name
+      });
+      question.subdomain = category;
+    }
+
+    return question;
+  });
+}
+
 /**
  * Build the generation prompt for Claude
  * This version uses the CORRECT schema matching your database
@@ -2935,6 +2988,16 @@ REFERENCES REQUIREMENTS:
 
   if (domain_name) {
     prompt += `DOMAIN FOCUS: ${domain_name} (Weight: ${weight}%)\n`;
+    
+    // Add category constraints for the domain
+    const validCategories = getCategoriesForDomain(domain_name);
+    if (validCategories && validCategories.length > 0) {
+      prompt += `\nVALID CATEGORIES (you MUST select ONE from this list for the "subdomain" field):\n`;
+      validCategories.forEach((cat, idx) => {
+        prompt += `  ${idx + 1}. ${cat}\n`;
+      });
+      prompt += `\n⚠️  CRITICAL: The "subdomain" value MUST be exactly one of the categories listed above. Do not invent new categories.\n\n`;
+    }
   }
 
   if (cognitive_level) {
@@ -2988,7 +3051,7 @@ ${multiple_answers === '1' ? `[
       "otherOptions": "Weekly backups create unacceptable data loss risk\\nRead replicas without failover require manual intervention"
     },
     "domain": "${domain_name || 'Cloud Operations and Support'}",
-    "subdomain": "${domain_name ? 'Disaster Recovery' : 'High Availability'}",
+    "subdomain": "<SELECT ONE FROM VALID CATEGORIES LIST ABOVE>",
     "cognitive_level": "${cognitive_level || 'Application'}",
     "skill_level": "${skill_level || 'Intermediate'}",
     "weight": ${weight},
@@ -3019,7 +3082,7 @@ ${multiple_answers === '1' ? `[
       "otherOptions": "CloudWatch monitoring alone doesn't provide failover\\nWeekly backups create unacceptable data loss risk\\nRead replicas without failover require manual intervention"
     },
     "domain": "${domain_name || 'Cloud Operations and Support'}",
-    "subdomain": "${domain_name ? 'Disaster Recovery' : 'High Availability'}",
+    "subdomain": "<SELECT ONE FROM VALID CATEGORIES LIST ABOVE>",
     "cognitive_level": "${cognitive_level || 'Application'}",
     "skill_level": "${skill_level || 'Intermediate'}",
     "weight": ${weight},
