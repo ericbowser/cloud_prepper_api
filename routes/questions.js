@@ -1,6 +1,7 @@
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs').promises;
 const path = require('path');
@@ -13,6 +14,10 @@ const BATCH_POLL_TIMEOUT = parseInt(process.env.BATCH_POLL_TIMEOUT) || 600000; /
 const BACKGROUND_POLL_INTERVAL = parseInt(process.env.BACKGROUND_POLL_INTERVAL) || 300000; // 5 minutes (configurable)
 const MAX_PENDING_AGE_HOURS = parseInt(process.env.MAX_PENDING_AGE_HOURS) || 24; // 24 hours (configurable)
 const MAX_PENDING_AGE_MS = MAX_PENDING_AGE_HOURS * 60 * 60 * 1000;
+/** Target length for question_text (chars). Prompt asks model to stay near this. */
+const QUESTION_TEXT_TARGET_CHARS = parseInt(process.env.QUESTION_TEXT_TARGET_CHARS, 10) || 800;
+/** Log warning when question_text exceeds this (chars). */
+const QUESTION_TEXT_WARN_CHARS = parseInt(process.env.QUESTION_TEXT_WARN_CHARS, 10) || 1200;
 const QUESTIONS_FOLDER = path.join(__dirname, '..', 'questions');
 const DOMAIN_WEIGHTS = require('../utils/constants').DOMAIN_WEIGHTS;
 const anthropic = new Anthropic({
@@ -24,6 +29,82 @@ let dbClient = null;
 
 const router = express.Router();
 const _logger = logger();
+
+// Rate limit for fetching batch results (protects expensive DB reads)
+const batchResultsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 120, // limit each IP to 120 requests per windowMs
+});
+
+/**
+ * Shuffle options to avoid correct answer bias (e.g., always option B/C).
+ * We preserve `isCorrect` on each option object, then recompute
+ * `correct_answer` / `correct_answers` based on `isCorrect`.
+ */
+function shuffleArrayInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function normalizeCorrectAnswerFieldsFromOptions(question) {
+  const options = Array.isArray(question?.options) ? question.options : [];
+
+  const correctTexts = options
+    .filter((opt) => typeof opt === 'object' && opt && opt.isCorrect === true)
+    .map((opt) => opt.text)
+    .filter((t) => typeof t === 'string' && t.trim().length > 0);
+
+  const isMultiple = question?.multiple_answers === '1' || correctTexts.length > 1;
+
+  if (isMultiple) {
+    question.correct_answer = null;
+    question.correct_answers = correctTexts.length > 0 ? correctTexts : null;
+    question.multiple_answers = '1';
+  } else {
+    const single = correctTexts[0] || question.correct_answer || null;
+    question.correct_answer = single;
+    question.correct_answers = null;
+    // Keep existing behavior where single-answer can be null; DB insertion will coerce to bit anyway
+    question.multiple_answers = null;
+  }
+
+  return question;
+}
+
+function shuffleQuestionOptions(question) {
+  if (!question || !Array.isArray(question.options) || question.options.length < 2) {
+    return question;
+  }
+
+  // Only shuffle if options are objects (schema requires {text,isCorrect})
+  // If older string-only options are present, leave as-is to avoid breaking mapping.
+  const hasObjectOptions = question.options.some((o) => typeof o === 'object' && o);
+  if (!hasObjectOptions) {
+    return question;
+  }
+
+  shuffleArrayInPlace(question.options);
+  return normalizeCorrectAnswerFieldsFromOptions(question);
+}
+
+/**
+ * Normalize question_text for length: trim and collapse multiple spaces/newlines.
+ * Does not truncate or change meaning. Returns question with updated question_text.
+ */
+function normalizeQuestionTextForLength(question) {
+  if (!question || typeof question !== 'object') return question;
+  const raw = question.question_text || question.question;
+  if (typeof raw !== 'string') return question;
+  const normalized = raw.trim().replace(/\s+/g, ' ');
+  if (normalized === raw) return question;
+  const q = { ...question };
+  if (q.question_text !== undefined) q.question_text = normalized;
+  if (q.question !== undefined) q.question = normalized;
+  return q;
+}
 
 // Debug middleware to log all requests to questions router
 router.use((req, res, next) => {
@@ -1101,6 +1182,9 @@ router.post('/generateQuestion', authenticateToken, async (req, res) => {
     if (!Array.isArray(questions)) {
       questions = [questions];
     }
+
+    // Shuffle options to reduce positional bias, while preserving correctness
+    questions = questions.map(shuffleQuestionOptions);
 
     _logger.info(`Successfully generated ${questions.length} questions`);
     _logger.info('Questions', {
@@ -2641,6 +2725,36 @@ async function pollPendingBatches() {
               }
             }
 
+            // Shuffle options to reduce positional bias, while preserving correctness
+            allQuestions = allQuestions.map(shuffleQuestionOptions);
+            // Normalize question_text (trim, collapse spaces) and monitor length
+            allQuestions = allQuestions.map(normalizeQuestionTextForLength);
+            const lengths = allQuestions.map((q) => (q.question_text || q.question || '').length);
+            if (lengths.length > 0) {
+              const minLen = Math.min(...lengths);
+              const maxLen = Math.max(...lengths);
+              const avgLen = Math.round(lengths.reduce((s, n) => s + n, 0) / lengths.length);
+              _logger.info('[BATCH-QUESTION-LENGTH] Batch question_text length stats', {
+                batch_id: batchJob.batch_id,
+                count: lengths.length,
+                min: minLen,
+                max: maxLen,
+                avg: avgLen,
+                target_chars: QUESTION_TEXT_TARGET_CHARS,
+                warn_threshold: QUESTION_TEXT_WARN_CHARS,
+              });
+              lengths.forEach((len, i) => {
+                if (len > QUESTION_TEXT_WARN_CHARS) {
+                  _logger.warn('[BATCH-QUESTION-LENGTH] Question exceeds warn threshold', {
+                    batch_id: batchJob.batch_id,
+                    index: i,
+                    length: len,
+                    warn_threshold: QUESTION_TEXT_WARN_CHARS,
+                  });
+                }
+              });
+            }
+
             updates.results = allQuestions;
             updates.completed_at = new Date().toISOString();
 
@@ -2962,6 +3076,12 @@ AVOID:
 - Obviously wrong answers
 - Options from completely different domains
 - Surface-level explanations
+
+QUESTION LENGTH (keep quality, reduce verbosity):
+- Keep question_text concise: target under ${QUESTION_TEXT_TARGET_CHARS} characters (roughly 1–3 clear sentences).
+- Use one focused scenario sentence with concrete constraints; avoid long preambles, repetition, or filler (e.g. "The company has decided to..." or "After careful analysis...").
+- Preserve all technical details and requirements needed to answer; shorten by removing redundant phrasing and wordy transitions.
+- Option text can be short phrases; avoid full sentences in options when a phrase suffices.
 
 Generate ${count} question(s) and return ONLY a JSON array with this EXACT structure:
 
